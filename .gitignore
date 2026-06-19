@@ -2,10 +2,12 @@
 .env
 deploy/.env.cloud
 
-# Storage directories (local data)
+# Storage directories (local data + ingest runtime artifacts)
 storage/videos/
 storage/frames/
 storage/EPIC-KITCHENS/
+storage/manifests/
+storage/facets/
 
 # Python
 __pycache__/

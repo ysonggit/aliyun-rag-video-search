@@ -15,7 +15,9 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import cv2
@@ -34,6 +36,7 @@ from pipeline.frame_metadata import FrameMetadata
 from pipeline.embedder import Embedder
 from pipeline.captions import Captioner
 from pipeline.indexer import Indexer
+from pipeline.oss_uploader import upload_frames
 
 
 EPIC_ROOT = ROOT / "EPIC-KITCHENS"
@@ -147,25 +150,46 @@ def main():
         print("  ERROR: No frames")
         sys.exit(1)
 
+    # Checkpoint: skip frames already indexed in a previous run (resume support).
+    manifest_path = FRAME_OUTPUT.parent / "manifests" / f"{collection_name}.txt"
+    done_ids = set()
+    if manifest_path.exists():
+        with open(manifest_path) as mf:
+            done_ids = {line.strip() for line in mf if line.strip()}
+    if done_ids:
+        before = len(all_frames)
+        all_frames = [f for f in all_frames if f.frame_id not in done_ids]
+        print(f"  Resume: {len(done_ids)} frames already indexed, "
+              f"{before - len(all_frames)} skipped, {len(all_frames)} remaining")
+    if not all_frames:
+        print(f"  Nothing to do — all frames already indexed in {collection_name}. Done.")
+        return
+
     # Estimate cost
     est_embedding = len(all_frames) * 0.001  # rough per-frame cost in ¥
     est_caption = len(all_frames) * 0.02     # rough per-frame cost in ¥
     print(f"  Est. cost: embedding ~¥{est_embedding:.0f}, caption ~¥{est_caption:.0f}")
 
-    # Step 2: Embedding
-    print(f"\n[2] Embedding ({dashscope_config.embedding_model})...")
-    embedder = Embedder(model=dashscope_config.embedding_model, api_key=dashscope_config.api_key)
-    all_frames = embedder.embed_frames(all_frames)
-
-    # Step 3: Captioning
-    print(f"\n[3] Captioning ({dashscope_config.vl_model})...")
-    print(f"    {len(all_frames)} frames, this may take a while...")
+    # Steps 2 & 3: Embed and caption concurrently.
+    # They read the same frames but write disjoint fields (embedding vs scene_desc/
+    # objects/...), so the two stages overlap instead of running as sequential passes.
+    print(f"\n[2+3] Embedding ({dashscope_config.embedding_model}) + "
+          f"captioning ({dashscope_config.vl_model}) concurrently...")
+    embedder = Embedder(
+        model=dashscope_config.embedding_model,
+        api_key=dashscope_config.api_key,
+        max_workers=int(os.environ.get("EMBED_WORKERS", "4")),
+    )
     captioner = Captioner(
         model=dashscope_config.vl_model,
         api_key=dashscope_config.api_key,
         max_workers=int(os.environ.get("CAPTION_WORKERS", "8")),
     )
-    all_frames = captioner.caption_frames(all_frames)
+    with ThreadPoolExecutor(max_workers=2) as stage_pool:
+        fut_embed = stage_pool.submit(embedder.embed_frames, all_frames)
+        fut_caption = stage_pool.submit(captioner.caption_frames, all_frames)
+        fut_embed.result()      # re-raises embedding errors (caption errors fall back to defaults)
+        fut_caption.result()
 
     # Top objects
     obj_counts = {}
@@ -186,13 +210,12 @@ def main():
     if oss_ak and oss_sk:
         auth = oss2.Auth(oss_ak, oss_sk)
         bucket = oss2.Bucket(auth, f"https://{oss_endpoint}", oss_bucket)
-        for i, f in enumerate(all_frames):
-            oss_key = f"frames/{f.video_id}/{f.frame_id}.jpg"
-            bucket.put_object_from_file(oss_key, f.frame_path)
-            f.frame_path = f"https://{oss_bucket}.{oss_endpoint}/{oss_key}"
-            if (i + 1) % 100 == 0:
-                print(f"    Uploaded {i+1}/{len(all_frames)} frames")
-        print(f"  All {len(all_frames)} frames uploaded to OSS")
+        upload_frames(
+            all_frames,
+            bucket,
+            prefix="frames",
+            max_workers=int(os.environ.get("UPLOAD_WORKERS", "8")),
+        )
     else:
         print(f"  WARN: OSS credentials not set, keeping local paths")
 
@@ -205,11 +228,40 @@ def main():
         dimension=embedder.dimension,
     )
     indexer.create_collection(if_not_exists=True)
+
+    # Append each successfully upserted batch to the manifest so a failed/partial
+    # run resumes without re-spending on the embed/caption APIs.
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_lock = threading.Lock()
+
+    def checkpoint(frame_ids):
+        with manifest_lock, open(manifest_path, "a") as mf:
+            mf.write("\n".join(frame_ids) + "\n")
+
     ingested = indexer.index(
         all_frames,
         embedding_model=dashscope_config.embedding_model,
         caption_model=dashscope_config.vl_model,
+        on_batch_indexed=checkpoint,
     )
+
+    # Write/merge facet values for the search UI (avoids a sampling query on load).
+    # Merge with any existing file so resume runs accumulate the full value set.
+    facets_path = FRAME_OUTPUT.parent / "facets" / f"{collection_name}.json"
+    facets_path.parent.mkdir(parents=True, exist_ok=True)
+    existing = {}
+    if facets_path.exists():
+        try:
+            existing = json.loads(facets_path.read_text())
+        except Exception:
+            existing = {}
+    facets = {
+        "videos": sorted(set(existing.get("videos", [])) | {f.video_id for f in all_frames if f.video_id}),
+        "objects": sorted(set(existing.get("objects", [])) | {o for f in all_frames for o in f.objects}),
+        "category": sorted(set(existing.get("category", [])) | {f.category for f in all_frames if f.category}),
+    }
+    facets_path.write_text(json.dumps(facets, ensure_ascii=False, indent=2))
+    print(f"  Facets written: {facets_path}")
 
     elapsed = time.time() - start_time
     print(f"\n{'=' * 60}")

@@ -12,6 +12,7 @@ Usage:
     results = retriever.search("wash dishes", top_k=10, objects=["cup", "spoon"])
 """
 
+from functools import lru_cache
 from http import HTTPStatus
 from typing import List, Optional
 
@@ -19,6 +20,19 @@ import dashscope
 from dashvector import Client
 
 from pipeline.filter_builder import build_filter, FilterParams
+
+
+@lru_cache(maxsize=256)
+def _embed_text_cached(model: str, text: str) -> tuple:
+    """Embed query text, memoized by (model, text). Returns a hashable tuple.
+
+    Streamlit reruns the script on every widget interaction, re-embedding the
+    same query text; this cache avoids the redundant API calls.
+    """
+    resp = dashscope.MultiModalEmbedding.call(model=model, input=[{"text": text}])
+    if resp.status_code != HTTPStatus.OK:
+        raise RuntimeError(f"Text embedding failed: {resp.code} - {resp.message}")
+    return tuple(resp.output["embeddings"][0]["embedding"])
 
 
 class SearchResult:
@@ -146,31 +160,37 @@ class Retriever:
 
         # Convert text query to embedding
         query_vec = self._embed_text(query)
-
-        # Fetch more results from DashVector to allow client-side filtering
-        fetch_k = top_k * vector_fetch_multiplier if fp.has_client_filter else top_k
-
         collection = self.collection
-        kwargs = {
-            "vector": query_vec,
-            "topk": fetch_k,
-            "output_fields": self.OUTPUT_FIELDS,
-        }
-        if fp.server_filter:
-            kwargs["filter"] = fp.server_filter
 
-        rsp = collection.query(**kwargs)
-        if not rsp:
-            raise RuntimeError(f"Query failed: {rsp.code} - {rsp.message}")
+        def run_query(fetch_k: int):
+            kwargs = {
+                "vector": query_vec,
+                "topk": fetch_k,
+                "output_fields": self.OUTPUT_FIELDS,
+            }
+            if fp.server_filter:
+                kwargs["filter"] = fp.server_filter
+            rsp = collection.query(**kwargs)
+            if not rsp:
+                raise RuntimeError(f"Query failed: {rsp.code} - {rsp.message}")
+            raw = rsp.output or []
+            res = [SearchResult(r) for r in raw]
+            if fp.has_client_filter:
+                res = self._apply_array_filters(res, fp)
+            return res, len(raw)
 
-        # Convert to SearchResult objects
-        results = [SearchResult(raw) for raw in (rsp.output or [])]
+        # Over-fetch when array filters will prune client-side, then truncate.
+        fetch_k = top_k * vector_fetch_multiplier if fp.has_client_filter else top_k
+        results, raw_count = run_query(fetch_k)
 
-        # Apply client-side array filters
-        if fp.has_client_filter:
-            results = self._apply_array_filters(results, fp)
+        # Adaptive backfill: hard object/action filters can prune below top_k.
+        # Refetch once with a larger window — but only if the first query came back
+        # saturated (more candidates likely exist beyond what we fetched).
+        if fp.has_client_filter and len(results) < top_k and raw_count >= fetch_k:
+            bigger = min(fetch_k * 4, 200)
+            if bigger > fetch_k:
+                results, _ = run_query(bigger)
 
-        # Truncate to requested top_k
         return results[:top_k]
 
     def search_by_vector(
@@ -196,14 +216,8 @@ class Retriever:
         return [SearchResult(raw) for raw in (rsp.output or [])]
 
     def _embed_text(self, text: str) -> List[float]:
-        """Embed a text query using the configured model."""
-        resp = dashscope.MultiModalEmbedding.call(
-            model=self.embedding_model,
-            input=[{"text": text}],
-        )
-        if resp.status_code != HTTPStatus.OK:
-            raise RuntimeError(f"Text embedding failed: {resp.code} - {resp.message}")
-        return resp.output["embeddings"][0]["embedding"]
+        """Embed a text query using the configured model (memoized)."""
+        return list(_embed_text_cached(self.embedding_model, text))
 
     @staticmethod
     def _apply_array_filters(

@@ -12,7 +12,7 @@ Usage:
 
 import json
 import time
-from typing import List
+from typing import Callable, List, Optional
 
 from dashvector import Client, Doc
 
@@ -98,6 +98,7 @@ class Indexer:
         embedding_model: str = "",
         caption_model: str = "",
         batch_size: int = 50,
+        on_batch_indexed: Optional[Callable[[List[str]], None]] = None,
     ) -> int:
         """
         Upsert frames into DashVector.
@@ -107,6 +108,9 @@ class Indexer:
             embedding_model: Model name used for embedding (recorded in metadata).
             caption_model: Model name used for captioning.
             batch_size: Number of docs per upsert call.
+            on_batch_indexed: Optional callback invoked with the frame_ids of each
+                successfully upserted batch. Used for checkpointing/resume; the
+                Indexer itself stays filesystem-agnostic.
 
         Returns:
             Number of documents upserted.
@@ -172,6 +176,8 @@ class Indexer:
                     batch_num = batch_start // batch_size + 1
                     total_batches = (total + batch_size - 1) // batch_size
                     print(f"  Batch {batch_num}/{total_batches}: {len(docs)} docs upserted")
+                    if on_batch_indexed is not None:
+                        on_batch_indexed([d.id for d in docs])
                 else:
                     print(f"  WARN: Batch upsert failed: {rsp.code} - {rsp.message}")
 

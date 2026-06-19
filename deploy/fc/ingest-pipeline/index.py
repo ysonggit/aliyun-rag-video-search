@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import oss2
@@ -27,6 +28,7 @@ from pipeline.embedder import Embedder
 from pipeline.captions import Captioner
 from pipeline.indexer import Indexer
 from pipeline.frame_metadata import FrameMetadata
+from pipeline.oss_uploader import upload_frames
 
 app = Flask(__name__)
 
@@ -108,26 +110,30 @@ def process_video(bucket_name, object_key, video_id):
     frames = extract_frames(local_video, video_id)
     app.logger.info(f"  Extracted {len(frames)} frames")
 
-    # 3. Embed (reads local files, base64 encodes)
+    # 3 & 4. Embed and caption concurrently (disjoint fields, same frames)
     embedder = Embedder(
         model=os.environ.get("EMBEDDING_MODEL", "tongyi-embedding-vision-plus"),
         api_key=os.environ["DASHSCOPE_API_KEY"],
+        max_workers=int(os.environ.get("EMBED_WORKERS", "4")),
     )
-    frames = embedder.embed_frames(frames)
-
-    # 4. Caption (reads local files)
     captioner = Captioner(
         model=os.environ.get("VL_MODEL", "qwen-vl-max"),
         api_key=os.environ["DASHSCOPE_API_KEY"],
         max_workers=int(os.environ.get("CAPTION_WORKERS", "8")),
     )
-    frames = captioner.caption_frames(frames)
+    with ThreadPoolExecutor(max_workers=2) as stage_pool:
+        fut_embed = stage_pool.submit(embedder.embed_frames, frames)
+        fut_caption = stage_pool.submit(captioner.caption_frames, frames)
+        fut_embed.result()
+        fut_caption.result()
 
     # 5. Upload frames to OSS (after embedding/captioning, so local files are no longer needed)
-    for f in frames:
-        oss_key = f"{FRAME_PREFIX}/{video_id}/{f.frame_id}.jpg"
-        bucket.put_object_from_file(oss_key, f.frame_path)
-        f.frame_path = f"https://{bucket_name}.{OSS_ENDPOINT}/{oss_key}"
+    upload_frames(
+        frames,
+        bucket,
+        prefix=FRAME_PREFIX,
+        max_workers=int(os.environ.get("UPLOAD_WORKERS", "8")),
+    )
 
     # 6. Ingest to DashVector (with OSS URLs as frame_path)
     indexer = Indexer(
