@@ -39,7 +39,12 @@ docker build \
   -f "$SCRIPT_DIR/Dockerfile.ingest" \
   "$PROJECT_DIR"
 
-echo "  Images built: rag-query, rag-ingest"
+docker build \
+  -t rag-webui:latest \
+  -f "$SCRIPT_DIR/Dockerfile.webui" \
+  "$PROJECT_DIR"
+
+echo "  Images built: rag-query, rag-ingest, rag-webui"
 
 # ── Step 2: Push to ACR ──────────────────────────────
 echo ""
@@ -47,9 +52,11 @@ echo "[2/4] Pushing to ACR..."
 
 docker tag rag-query:latest "$ACR/rag-query:latest"
 docker tag rag-ingest:latest "$ACR/rag-ingest:latest"
+docker tag rag-webui:latest "$ACR/rag-webui:latest"
 
 docker push "$ACR/rag-query:latest"
 docker push "$ACR/rag-ingest:latest"
+docker push "$ACR/rag-webui:latest"
 
 echo "  Images pushed to ACR"
 
@@ -82,6 +89,9 @@ echo "=== Deployment Complete ==="
 echo ""
 echo "Test query:"
 echo "  curl \"https://\$(s info query-service --output url)/search?q=take+cup&top_k=5\""
+echo ""
+echo "Open the web UI:"
+echo "  open \"https://\$(s info web-ui --output url)\""
 echo ""
 echo "Test ingestion:"
 echo "  aliyun oss cp test.mp4 oss://$BUCKET/raw-videos/test.mp4"

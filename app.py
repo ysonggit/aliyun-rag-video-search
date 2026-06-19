@@ -84,6 +84,43 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# ── Auth gate ─────────────────────────────────────────────
+# If WEBUI_PASSWORD is set (cloud deploy), gate the whole app behind a
+# session-scoped password. If unset (local dev), skip auth entirely.
+
+import hmac
+
+
+def _webui_password() -> str:
+    return os.environ.get("WEBUI_PASSWORD", "").strip()
+
+
+def is_authenticated() -> bool:
+    pwd = _webui_password()
+    if not pwd:
+        return True  # local dev: no gate
+    return st.session_state.get("authenticated", False)
+
+
+def render_login() -> None:
+    st.markdown("## 🔒 RAG Video Search")
+    st.caption("Sign in required")
+    with st.form("login"):
+        entered = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Sign in")
+    if submitted:
+        if hmac.compare_digest(entered.encode(), _webui_password().encode()):
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
+
+
+if not is_authenticated():
+    render_login()
+    st.stop()
+
+
 # ── Init retriever (cached) ────────────────────────────────
 
 @st.cache_resource

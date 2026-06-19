@@ -23,6 +23,15 @@ from pipeline.retriever import Retriever
 app = Flask(__name__)
 _retriever = None
 
+# ── Security config ────────────────────────────────────────
+# INTERNAL_TOKEN: shared secret that the API Gateway injects when forwarding.
+# Defense-in-depth: even if someone discovers the FC HTTP trigger URL, they
+# can't call /search without this header. Leave empty to disable (dev only).
+_INTERNAL_TOKEN = os.environ.get("INTERNAL_TOKEN", "").strip()
+# Sanity caps on user input — prevent pathological queries from burning quota.
+_MAX_QUERY_LEN = 500
+_MAX_FILTER_VALUES = 20
+
 
 def get_retriever():
     global _retriever
@@ -36,10 +45,31 @@ def get_retriever():
     return _retriever
 
 
+@app.before_request
+def _check_internal_token():
+    """Require X-Internal-Token header on all routes except the health check.
+
+    The API Gateway injects this header; it blocks direct hits to the FC URL
+    if someone discovers it. Health check (/) stays open so FC can probe it.
+    """
+    if not _INTERNAL_TOKEN:
+        return  # dev mode: no gate
+    if request.path == "/" or request.path == "/health":
+        return
+    sent = request.headers.get("X-Internal-Token", "").strip()
+    if not sent or sent != _INTERNAL_TOKEN:
+        return jsonify({"error": "Unauthorized"}), 401
+
+
 @app.route("/", methods=["GET"])
 def health():
     """Health check endpoint for FC."""
     return jsonify({"status": "ok"}), 200
+
+
+@app.route("/health", methods=["GET"])
+def health_alias():
+    return health()
 
 
 @app.route("/search", methods=["GET"])
@@ -48,13 +78,27 @@ def search():
     query = request.args.get("q", "").strip()
     if not query:
         return jsonify({"error": "Missing 'q' parameter"}), 400
+    if len(query) > _MAX_QUERY_LEN:
+        return jsonify({"error": f"Query too long (max {_MAX_QUERY_LEN} chars)"}), 400
 
-    top_k = min(max(int(request.args.get("top_k", 10)), 1), 50)
+    try:
+        top_k = int(request.args.get("top_k", 10))
+    except ValueError:
+        return jsonify({"error": "Invalid 'top_k'"}), 400
+    top_k = min(max(top_k, 1), 50)
 
     video_id = request.args.get("video_id")
+    if video_id is not None:
+        video_id = video_id.strip()[:64] or None
+
     lighting = request.args.get("lighting")
+    if lighting is not None:
+        lighting = lighting.strip()[:32] or None
+
     objects_str = request.args.get("objects", "")
-    objects = [o.strip() for o in objects_str.split(",") if o.strip()] or None
+    objects = [o.strip()[:64] for o in objects_str.split(",") if o.strip()] or None
+    if objects and len(objects) > _MAX_FILTER_VALUES:
+        return jsonify({"error": f"Too many object filters (max {_MAX_FILTER_VALUES})"}), 400
 
     try:
         retriever = get_retriever()
@@ -81,8 +125,10 @@ def search():
                 for r in results
             ],
         })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        # Log full traceback server-side; never leak internals to the client.
+        app.logger.exception("search failed")
+        return jsonify({"error": "Internal server error"}), 500
 
 
 if __name__ == "__main__":
