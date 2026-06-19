@@ -9,6 +9,7 @@ Requires:
   .env with DASHSCOPE_API_KEY, DASHVECTOR_API_KEY, DASHVECTOR_ENDPOINT
 """
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -97,26 +98,43 @@ def get_retriever() -> Retriever:
 
 # ── Helper: get available filter values ────────────────────
 
+# Lighting is a fixed enum in the caption schema (see pipeline/captions.py),
+# so it never needs a query to populate.
+LIGHTING_ENUM = ["bright", "dim", "mixed", "outdoor"]
+
+
 @st.cache_data(ttl=300)
 def get_filter_options() -> dict:
-    """Query DashVector to discover available filter values."""
-    retriever = get_retriever()
+    """Discover available filter values for the sidebar.
+
+    Prefers a precomputed facets file written at ingest time; falls back to
+    sampling the collection when the file is absent.
+    """
+    opts = {"videos": [], "lighting": LIGHTING_ENUM, "objects": [], "category": []}
+
+    facets_path = (
+        Path(__file__).resolve().parent
+        / "storage" / "facets" / f"{dashvector_config.collection_name}.json"
+    )
+    if facets_path.exists():
+        try:
+            data = json.loads(facets_path.read_text())
+            opts["videos"] = data.get("videos", [])
+            opts["objects"] = data.get("objects", [])
+            opts["category"] = data.get("category", [])
+            return opts
+        except Exception:
+            pass  # fall through to sampling
+
     try:
-        results = retriever.search("scene", top_k=50)
+        results = get_retriever().search("scene", top_k=50)
     except Exception:
-        return {"videos": [], "lighting": [], "objects": [], "category": []}
+        return opts
 
-    videos = sorted(set(r.video_id for r in results if r.video_id))
-    lightings = sorted(set(r.lighting for r in results if r.lighting))
-    objects = sorted(set(obj for r in results for obj in r.objects))
-    categories = sorted(set(r.category for r in results if r.category))
-
-    return {
-        "videos": videos,
-        "lighting": lightings,
-        "objects": objects,
-        "category": categories,
-    }
+    opts["videos"] = sorted(set(r.video_id for r in results if r.video_id))
+    opts["objects"] = sorted(set(obj for r in results for obj in r.objects))
+    opts["category"] = sorted(set(r.category for r in results if r.category))
+    return opts
 
 
 # ── Layout ─────────────────────────────────────────────────

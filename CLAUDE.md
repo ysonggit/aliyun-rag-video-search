@@ -94,7 +94,16 @@ path isn't a local file.
   write progress to `/tmp/*_progress.txt` to bypass stdout buffering during long runs.
 - Qwen-VL has no batch API (one image per call), so `Captioner` captions frames concurrently
   via a thread pool (`max_workers`, default 8, env `CAPTION_WORKERS`); lower it if you hit
-  DashScope rate limits. `Embedder` batches ≤8 images per call instead.
+  DashScope rate limits. `Embedder` batches ≤8 images per call AND fans those batches out
+  concurrently (`max_workers`, default 4, env `EMBED_WORKERS`).
+- Ingestion runs embed and caption **concurrently** (disjoint `FrameMetadata` fields) and
+  uploads frames to OSS in parallel (`pipeline/oss_uploader.py`, env `UPLOAD_WORKERS`, default
+  8). Combined DashScope concurrency ≈ `EMBED_WORKERS + CAPTION_WORKERS` — turn these down
+  together if you get throttled.
+- `scripts/ingest_epic.py` is resumable: indexed `frame_id`s are appended to
+  `storage/manifests/{collection}.txt` (via `Indexer.index`'s `on_batch_indexed` callback) and
+  skipped on re-run. It also writes `storage/facets/{collection}.json` (distinct videos/objects/
+  categories) which `app.py` reads to populate sidebar filters without a sampling query.
 - `embedding_model` must match the `dimension` of the target collection (1152 for
   `tongyi-embedding-vision-plus`); `Embedder.dimension` maps model→dim.
 - See `docs/` for design intent: `milestone6_egocentric_design.md` (ego-centric roadmap),
