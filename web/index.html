@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RAG Video Search</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0d1117; color: #c9d1d9; line-height: 1.6;
+      max-width: 1200px; margin: 0 auto; padding: 20px;
+    }
+    h1 { color: #f0f6fc; margin-bottom: 8px; }
+    .subtitle { color: #8b949e; font-size: 0.9em; margin-bottom: 20px; }
+    .search-bar {
+      display: flex; gap: 10px; margin-bottom: 16px;
+    }
+    .search-bar input[type="text"] {
+      flex: 1; padding: 10px 14px; font-size: 15px;
+      background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+      color: #c9d1d9; outline: none;
+    }
+    .search-bar input:focus { border-color: #58a6ff; }
+    .search-bar button {
+      padding: 10px 24px; font-size: 15px; cursor: pointer;
+      background: #238636; color: white; border: none; border-radius: 8px;
+      font-weight: 600;
+    }
+    .search-bar button:hover { background: #2ea043; }
+    .filters {
+      display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
+    }
+    .filters select, .filters input {
+      padding: 6px 10px; font-size: 13px;
+      background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+      color: #c9d1d9;
+    }
+    .status {
+      color: #8b949e; font-size: 0.85em; margin-bottom: 12px;
+    }
+    .results {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+      overflow: hidden; transition: transform 0.15s;
+    }
+    .card:hover { transform: translateY(-3px); border-color: #58a6ff; }
+    .card img {
+      width: 100%; height: 180px; object-fit: cover; display: block;
+      background: #1c2128;
+    }
+    .card-body { padding: 10px 14px; }
+    .card-score {
+      color: #3fb950; font-weight: 700; font-size: 1.1em;
+    }
+    .card-meta {
+      color: #8b949e; font-size: 0.78em; margin-top: 4px;
+    }
+    .card-tags {
+      display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;
+    }
+    .tag {
+      background: #1c2128; border: 1px solid #30363d; border-radius: 4px;
+      padding: 2px 8px; font-size: 0.72em; color: #79c0ff;
+    }
+    .tag.action { color: #d2991d; border-color: #d2991d44; }
+    .tag.gt { color: #3fb950; border-color: #3fb95044; }
+    .card-link {
+      display: inline-block; margin-top: 6px; font-size: 0.75em;
+      color: #58a6ff; text-decoration: none;
+    }
+    .card-link:hover { text-decoration: underline; }
+    .empty {
+      text-align: center; color: #8b949e; padding: 60px 20px;
+    }
+    .suggestions {
+      margin-top: 16px; color: #8b949e; font-size: 0.85em;
+    }
+    .suggestions button {
+      background: #21262d; border: 1px solid #30363d; border-radius: 6px;
+      padding: 4px 12px; margin: 3px; cursor: pointer; color: #79c0ff;
+      font-size: 0.9em;
+    }
+    .suggestions button:hover { background: #30363d; }
+  </style>
+</head>
+<body>
+  <h1>RAG Video Search</h1>
+  <p class="subtitle">EPIC-KITCHENS ego-centric video retrieval · DashScope + DashVector · Singapore</p>
+
+  <div class="search-bar">
+    <input type="text" id="query" placeholder='搜索: "take cup", "wash dishes", "pour water", "open door" ...'
+           value="" onkeypress="if(event.key==='Enter')doSearch()">
+    <button onclick="doSearch()">Search</button>
+  </div>
+
+  <div class="filters">
+    <select id="videoFilter">
+      <option value="">All Videos</option>
+      <option value="P01_03">P01_03</option>
+      <option value="P01_04">P01_04</option>
+      <option value="P01_08">P01_08</option>
+    </select>
+    <select id="topK">
+      <option value="6">Top 6</option>
+      <option value="10" selected>Top 10</option>
+      <option value="20">Top 20</option>
+      <option value="50">Top 50</option>
+    </select>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div class="results" id="results"></div>
+
+  <div class="suggestions" id="suggestions">
+    Try:
+    <button onclick="quickSearch('take cup')">take cup</button>
+    <button onclick="quickSearch('wash cup')">wash cup</button>
+    <button onclick="quickSearch('pour water')">pour water</button>
+    <button onclick="quickSearch('open door')">open door</button>
+    <button onclick="quickSearch('close fridge')">close fridge</button>
+    <button onclick="quickSearch('rinse spoon')">rinse spoon</button>
+    <button onclick="quickSearch('dry hands')">dry hands</button>
+    <button onclick="quickSearch('drink water')">drink water</button>
+  </div>
+
+  <script>
+    const API = "https://query-service-eftocucisq.ap-southeast-1.fcapp.run";
+
+    async function doSearch() {
+      const q = document.getElementById('query').value.trim();
+      if (!q) return;
+
+      const video_id = document.getElementById('videoFilter').value;
+      const top_k = document.getElementById('topK').value;
+
+      const status = document.getElementById('status');
+      const results = document.getElementById('results');
+      status.textContent = `Searching: "${q}" ...`;
+      results.innerHTML = '';
+
+      let url = `${API}/search?q=${encodeURIComponent(q)}&top_k=${top_k}`;
+      if (video_id) url += `&video_id=${video_id}`;
+
+      try {
+        const resp = await fetch(url);
+        const data = await resp.json();
+
+        if (data.error) {
+          status.textContent = `Error: ${data.error}`;
+          return;
+        }
+
+        status.textContent = `Query: "${q}" — ${data.total} results`;
+        document.getElementById('suggestions').style.display = 'none';
+
+        if (data.results.length === 0) {
+          results.innerHTML = '<div class="empty">No results. Try different keywords.</div>';
+          return;
+        }
+
+        results.innerHTML = data.results.map(r => `
+          <div class="card">
+            <img src="${r.frame_path}" alt="${r.frame_id}" loading="lazy"
+                 onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22280%22 height=%22180%22><rect fill=%22%231c2128%22 width=%22280%22 height=%22180%22/><text fill=%22%23484f58%22 x=%22120%22 y=%2290%22 font-size=%2214%22>No image</text></svg>'">
+            <div class="card-body">
+              <span class="card-score">${r.score.toFixed(4)}</span>
+              <div class="card-meta">
+                ${r.video_id} · t=${r.timestamp.toFixed(1)}s · ${r.lighting} · ${r.occlusion}
+              </div>
+              <div class="card-tags">
+                ${(r.objects||[]).slice(0,6).map(o => `<span class="tag">${o}</span>`).join('')}
+                ${(r.actions||[]).slice(0,3).map(a => `<span class="tag action">${a}</span>`).join('')}
+                ${r.gt_narration ? `<span class="tag gt">GT: ${r.gt_narration}</span>` : ''}
+              </div>
+              <a class="card-link" href="${r.frame_path}" target="_blank">View full image →</a>
+            </div>
+          </div>
+        `).join('');
+
+      } catch (err) {
+        status.textContent = `Error: ${err.message}`;
+      }
+    }
+
+    function quickSearch(q) {
+      document.getElementById('query').value = q;
+      doSearch();
+    }
+  </script>
+</body>
+</html>

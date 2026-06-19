@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 820" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/></marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#ea580c"/></marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#059669"/></marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#7c3aed"/></marker>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/></marker>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%"><feDropShadow dx="1" dy="2" stdDeviation="2" flood-opacity="0.12"/></filter>
+    <linearGradient id="dashScopeGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient>
+    <linearGradient id="fcGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f97316"/><stop offset="100%" stop-color="#ea580c"/></linearGradient>
+    <linearGradient id="dvGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient>
+    <linearGradient id="ossGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#2563eb"/></linearGradient>
+  </defs>
+  <rect width="1200" height="820" fill="#fafafa"/>
+  <text x="600" y="35" text-anchor="middle" font-size="20" font-weight="700" fill="#1e293b">RAG Video Search — End-to-End Cloud Architecture</text>
+  <text x="600" y="56" text-anchor="middle" font-size="13" fill="#64748b">Alibaba Cloud Singapore · Read/Write Separation · Serverless FC</text>
+  <text x="300" y="95" text-anchor="middle" font-size="14" font-weight="600" fill="#ea580c">INGEST PIPELINE (Write Path)</text>
+  <text x="900" y="95" text-anchor="middle" font-size="14" font-weight="600" fill="#2563eb">QUERY SERVICE (Read Path)</text>
+  <rect x="50" y="105" width="540" height="560" rx="12" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="8,4" opacity="0.5"/>
+  <rect x="620" y="105" width="530" height="560" rx="12" fill="none" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="8,4" opacity="0.5"/>
+  <rect x="80" y="125" width="120" height="55" rx="8" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="140" y="150" text-anchor="middle" font-size="13" font-weight="600" fill="#334155">📹 Video Upload</text>
+  <text x="140" y="167" text-anchor="middle" font-size="10" fill="#64748b">P01_03.MP4</text>
+  <line x1="200" y1="152" x2="255" y2="152" stroke="#6b7280" stroke-width="2" stroke-dasharray="4,2" marker-end="url(#arrow-gray)"/>
+  <rect x="207" y="142" width="40" height="12" fill="#fafafa" opacity="0.95"/>
+  <text x="227" y="151" text-anchor="middle" font-size="9" fill="#6b7280">upload</text>
+  <g filter="url(#shadow)">
+    <ellipse cx="320" cy="135" rx="55" ry="14" fill="url(#ossGrad)"/>
+    <rect x="265" y="135" width="110" height="35" fill="url(#ossGrad)"/>
+    <ellipse cx="320" cy="170" rx="55" ry="14" fill="url(#ossGrad)"/>
+    <ellipse cx="320" cy="135" rx="55" ry="14" fill="none" stroke="#1d4ed8" stroke-width="1"/>
+  </g>
+  <text x="320" y="158" text-anchor="middle" font-size="13" font-weight="600" fill="white">OSS Bucket</text>
+  <text x="320" y="195" text-anchor="middle" font-size="10" fill="#64748b">raw-videos/ (Singapore)</text>
+  <line x1="320" y1="185" x2="320" y2="225" stroke="#ea580c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+  <rect x="282" y="195" width="76" height="14" fill="#fafafa" opacity="0.95"/>
+  <text x="320" y="205" text-anchor="middle" font-size="9" fill="#ea580c" font-weight="600">OSS Event Trigger</text>
+  <g filter="url(#shadow)">
+    <rect x="230" y="230" width="180" height="50" rx="10" fill="url(#fcGrad)"/>
+  </g>
+  <text x="320" y="252" text-anchor="middle" font-size="13" font-weight="700" fill="white">FC: ingest-pipeline</text>
+  <text x="320" y="268" text-anchor="middle" font-size="10" fill="fed7aa">Flask · port 9000 · 4GB · 900s</text>
+  <rect x="80" y="310" width="200" height="42" rx="6" fill="#f1f5f9" stroke="#475569" stroke-width="1" opacity="0.9"/>
+  <text x="180" y="336" text-anchor="middle" font-size="12" font-weight="500" fill="#475569">1. Download video</text>
+  <rect x="300" y="310" width="200" height="42" rx="6" fill="#f1f5f9" stroke="#475569" stroke-width="1" opacity="0.9"/>
+  <text x="400" y="336" text-anchor="middle" font-size="12" font-weight="500" fill="#475569">2. OpenCV抽帧</text>
+  <rect x="80" y="370" width="200" height="42" rx="6" fill="#ede9fe" stroke="#6d28d9" stroke-width="1" opacity="0.9"/>
+  <text x="180" y="396" text-anchor="middle" font-size="12" font-weight="500" fill="#6d28d9">3. DashScope Embed</text>
+  <rect x="300" y="370" width="200" height="42" rx="6" fill="#ede9fe" stroke="#6d28d9" stroke-width="1" opacity="0.9"/>
+  <text x="400" y="396" text-anchor="middle" font-size="12" font-weight="500" fill="#6d28d9">4. Qwen-VL Caption</text>
+  <rect x="80" y="430" width="200" height="42" rx="6" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1" opacity="0.9"/>
+  <text x="180" y="456" text-anchor="middle" font-size="12" font-weight="500" fill="#1d4ed8">5. Upload frames→OSS</text>
+  <rect x="300" y="430" width="200" height="42" rx="6" fill="#d1fae5" stroke="#047857" stroke-width="1" opacity="0.9"/>
+  <text x="400" y="456" text-anchor="middle" font-size="12" font-weight="500" fill="#047857">6. DashVector upsert</text>
+  <line x1="180" y1="352" x2="180" y2="370" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+  <line x1="400" y1="352" x2="400" y2="370" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+  <line x1="180" y1="412" x2="180" y2="430" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+  <line x1="400" y1="412" x2="400" y2="430" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+  <line x1="280" y1="331" x2="300" y2="331" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+  <line x1="280" y1="391" x2="300" y2="391" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrow-purple)"/>
+  <line x1="280" y1="451" x2="300" y2="451" stroke="#059669" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <line x1="280" y1="280" x2="180" y2="310" stroke="#ea580c" stroke-width="1.5" stroke-dasharray="3,2" marker-end="url(#arrow-orange)"/>
+  <g filter="url(#shadow)">
+    <rect x="640" y="310" width="160" height="50" rx="10" fill="url(#dashScopeGrad)"/>
+  </g>
+  <text x="720" y="332" text-anchor="middle" font-size="13" font-weight="700" fill="white">DashScope API</text>
+  <text x="720" y="348" text-anchor="middle" font-size="10" fill="#c7d2fe">Singapore intl endpoint</text>
+  <line x1="280" y1="391" x2="640" y2="335" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrow-purple)"/>
+  <rect x="420" y="355" width="80" height="12" fill="#fafafa" opacity="0.95"/>
+  <text x="460" y="364" text-anchor="middle" font-size="9" fill="#7c3aed">image→1152-dim</text>
+  <line x1="500" y1="391" x2="640" y2="345" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrow-purple)"/>
+  <rect x="530" y="375" width="60" height="12" fill="#fafafa" opacity="0.95"/>
+  <text x="560" y="384" text-anchor="middle" font-size="9" fill="#7c3aed">img→JSON</text>
+  <g filter="url(#shadow)">
+    <rect x="780" y="125" width="160" height="55" rx="8" fill="#1e293b"/>
+    <circle cx="795" cy="140" r="4" fill="#ef4444"/><circle cx="807" cy="140" r="4" fill="#f59e0b"/><circle cx="819" cy="140" r="4" fill="#22c55e"/>
+  </g>
+  <text x="860" y="158" text-anchor="middle" font-size="13" font-weight="600" fill="#e2e8f0">🌐 Browser (HTML/JS)</text>
+  <text x="860" y="173" text-anchor="middle" font-size="10" fill="#94a3b8">web/index.html</text>
+  <line x1="860" y1="180" x2="860" y2="225" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <rect x="825" y="190" width="70" height="14" fill="#fafafa" opacity="0.95"/>
+  <text x="860" y="200" text-anchor="middle" font-size="9" fill="#2563eb">GET /search?q=</text>
+  <g filter="url(#shadow)">
+    <rect x="770" y="230" width="180" height="50" rx="10" fill="url(#fcGrad)"/>
+  </g>
+  <text x="860" y="252" text-anchor="middle" font-size="13" font-weight="700" fill="white">FC: query-service</text>
+  <text x="860" y="268" text-anchor="middle" font-size="10" fill="#fed7aa">Flask · port 9000 · 2GB · 10 concurrent</text>
+  <rect x="770" y="310" width="180" height="42" rx="6" fill="#ede9fe" stroke="#6d28d9" stroke-width="1" opacity="0.9"/>
+  <text x="860" y="336" text-anchor="middle" font-size="12" font-weight="500" fill="#6d28d9">1. Text→Embedding</text>
+  <rect x="770" y="370" width="180" height="42" rx="6" fill="#d1fae5" stroke="#047857" stroke-width="1" opacity="0.9"/>
+  <text x="860" y="396" text-anchor="middle" font-size="12" font-weight="500" fill="#047857">2. DashVector ANN+filter</text>
+  <rect x="770" y="430" width="180" height="42" rx="6" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1" opacity="0.9"/>
+  <text x="860" y="456" text-anchor="middle" font-size="12" font-weight="500" fill="#1d4ed8">3. Return top-k JSON</text>
+  <line x1="860" y1="352" x2="860" y2="370" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+  <line x1="860" y1="412" x2="860" y2="430" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+  <line x1="860" y1="280" x2="860" y2="310" stroke="#ea580c" stroke-width="1.5" stroke-dasharray="3,2" marker-end="url(#arrow-orange)"/>
+  <line x1="770" y1="331" x2="800" y2="335" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrow-purple)"/>
+  <rect x="775" y="320" width="40" height="12" fill="#fafafa" opacity="0.95"/>
+  <text x="795" y="329" text-anchor="middle" font-size="9" fill="#7c3aed">text→vec</text>
+  <path d="M 860,472 C 860,500 860,180 860,180" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arrow-blue)"/>
+  <rect x="870" y="480" width="65" height="12" fill="#fafafa" opacity="0.95"/>
+  <text x="902" y="489" text-anchor="middle" font-size="9" fill="#2563eb">JSON + OSS URLs</text>
+  <g filter="url(#shadow)">
+    <ellipse cx="600" cy="540" rx="80" ry="18" fill="url(#dvGrad)"/>
+    <rect x="520" y="540" width="160" height="50" fill="url(#dvGrad)"/>
+    <ellipse cx="600" cy="590" rx="80" ry="18" fill="url(#dvGrad)"/>
+    <ellipse cx="600" cy="540" rx="80" ry="18" fill="none" stroke="#047857" stroke-width="1"/>
+    <line x1="535" y1="555" x2="665" y2="555" stroke="#064e3b" stroke-width="0.5" opacity="0.3"/>
+    <line x1="535" y1="570" x2="665" y2="570" stroke="#064e3b" stroke-width="0.5" opacity="0.3"/>
+    <line x1="535" y1="585" x2="665" y2="585" stroke="#064e3b" stroke-width="0.5" opacity="0.3"/>
+  </g>
+  <text x="600" y="568" text-anchor="middle" font-size="14" font-weight="700" fill="white">DashVector</text>
+  <text x="600" y="585" text-anchor="middle" font-size="10" fill="#a7f3d0">collection: scene_frames</text>
+  <text x="600" y="625" text-anchor="middle" font-size="10" fill="#64748b">1152-dim · HNSW index · 18 metadata fields · Singapore</text>
+  <path d="M 400,472 C 450,500 520,530 540,555" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <rect x="430" y="510" width="60" height="12" fill="#fafafa" opacity="0.95"/>
+  <text x="460" y="519" text-anchor="middle" font-size="9" fill="#059669" font-weight="600">upsert (write)</text>
+  <path d="M 860,412 C 800,450 700,520 660,555" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <rect x="730" y="490" width="55" height="12" fill="#fafafa" opacity="0.95"/>
+  <text x="757" y="499" text-anchor="middle" font-size="9" fill="#2563eb" font-weight="600">query (read)</text>
+  <g filter="url(#shadow)">
+    <ellipse cx="180" cy="540" rx="60" ry="14" fill="url(#ossGrad)"/>
+    <rect x="120" y="540" width="120" height="35" fill="url(#ossGrad)"/>
+    <ellipse cx="180" cy="575" rx="60" ry="14" fill="url(#ossGrad)"/>
+    <ellipse cx="180" cy="540" rx="60" ry="14" fill="none" stroke="#1d4ed8" stroke-width="1"/>
+  </g>
+  <text x="180" y="563" text-anchor="middle" font-size="12" font-weight="600" fill="white">OSS frames/</text>
+  <text x="180" y="600" text-anchor="middle" font-size="10" fill="#64748b">frame images (JPG)</text>
+  <line x1="180" y1="472" x2="180" y2="526" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <rect x="140" y="490" width="80" height="12" fill="#fafafa" opacity="0.95"/>
+  <text x="180" y="499" text-anchor="middle" font-size="9" fill="#2563eb">put_object</text>
+  <path d="M 240,555 C 400,620 700,620 860,180" fill="none" stroke="#6b7280" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow-gray)"/>
+  <rect x="470" y="635" width="90" height="12" fill="#fafafa" opacity="0.95"/>
+  <text x="515" y="644" text-anchor="middle" font-size="9" fill="#6b7280">img src=OSS URL</text>
+  <rect x="50" y="700" width="1100" height="90" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="70" y="722" font-size="12" font-weight="700" fill="#334155">Legend</text>
+  <line x1="70" y1="740" x2="100" y2="740" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <text x="108" y="744" font-size="11" fill="#475569">Primary data flow (query/response)</text>
+  <line x1="330" y1="740" x2="360" y2="740" stroke="#ea580c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+  <text x="368" y="744" font-size="11" fill="#475569">Control / trigger (OSS event)</text>
+  <line x1="590" y1="740" x2="620" y2="740" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrow-purple)"/>
+  <text x="628" y="744" font-size="11" fill="#475569">Embedding / transform (DashScope)</text>
+  <line x1="70" y1="762" x2="100" y2="762" stroke="#059669" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <text x="108" y="766" font-size="11" fill="#475569">Write to DashVector (upsert)</text>
+  <line x1="330" y1="762" x2="360" y2="762" stroke="#6b7280" stroke-width="1" stroke-dasharray="4,2" marker-end="url(#arrow-gray)"/>
+  <text x="368" y="766" font-size="11" fill="#475569">Async / image load (OSS→browser)</text>
+  <line x1="590" y1="762" x2="620" y2="762" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arrow-blue)"/>
+  <text x="628" y="766" font-size="11" fill="#475569">Response data (JSON + URLs)</text>
+  <text x="850" y="722" font-size="11" font-weight="600" fill="#334155">Key Design: Read/Write Separation</text>
+  <text x="850" y="740" font-size="10" fill="#64748b">• Ingest and Query are independent FC functions</text>
+  <text x="850" y="755" font-size="10" fill="#64748b">• DashVector supports concurrent read/write</text>
+  <text x="850" y="770" font-size="10" fill="#64748b">• Zero coupling: upload video ≠ block search</text>
+</svg>

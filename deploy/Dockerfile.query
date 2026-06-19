@@ -1,0 +1,19 @@
+# Query Service Docker Image
+FROM python:3.11-slim
+
+WORKDIR /code
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY deploy/requirements.fc.txt .
+RUN pip install --no-cache-dir -r requirements.fc.txt
+
+COPY pipeline/ pipeline/
+COPY config.py schema.py ./
+COPY deploy/fc/query-service/index.py ./
+
+ENV PYTHONUNBUFFERED=1
+EXPOSE 9000
+CMD ["python3", "-u", "index.py"]

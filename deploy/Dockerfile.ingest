@@ -1,0 +1,21 @@
+# Ingest Pipeline Docker Image
+FROM python:3.11-slim
+
+WORKDIR /code
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 libglib2.0-0 libgomp1 \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY deploy/requirements.fc.txt .
+RUN pip install --no-cache-dir -r requirements.fc.txt
+
+COPY pipeline/ pipeline/
+COPY data/ data/
+COPY config.py schema.py ./
+COPY deploy/fc/ingest-pipeline/index.py ./
+
+ENV PYTHONUNBUFFERED=1
+EXPOSE 9000
+CMD ["python3", "-u", "index.py"]

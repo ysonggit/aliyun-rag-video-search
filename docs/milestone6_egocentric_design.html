@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RAG 视频检索系统 — 技术设计文档</title>
+  
+<style>
+  :root { --bg: #0d1117; --surface: #161b22; --border: #30363d; --text: #c9d1d9; --text-muted: #8b949e; --accent: #58a6ff; --accent-alt: #79c0ff; --green: #3fb950; --orange: #d2991d; --red: #f85149; --code-bg: #1c2128; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+  h1 { font-size: 2rem; border-bottom: 2px solid var(--border); padding-bottom: 0.6rem; margin: 2rem 0 1rem; color: #f0f6fc; }
+  h2 { font-size: 1.45rem; margin: 2.2rem 0 0.8rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); color: var(--accent-alt); }
+  h3 { font-size: 1.15rem; margin: 1.5rem 0 0.5rem; color: #e6edf3; }
+  p { margin: 0.7rem 0; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  blockquote { border-left: 3px solid var(--accent); padding: 0.5rem 1rem; margin: 1rem 0; background: var(--surface); border-radius: 0 4px 4px 0; color: var(--text-muted); }
+  code { font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace; background: var(--code-bg); padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.9em; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.2rem; overflow-x: auto; margin: 0.8rem 0; font-size: 0.85em; line-height: 1.6; }
+  pre code { background: none; padding: 0; border-radius: 0; line-height: 1.6; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.92em; }
+  th, td { border: 1px solid var(--border); padding: 0.55rem 0.8rem; text-align: left; }
+  th { background: var(--surface); font-weight: 600; color: #f0f6fc; }
+  tr:hover td { background: rgba(88, 166, 255, 0.04); }
+  td:first-child, th:first-child { white-space: nowrap; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+  ul, ol { padding-left: 1.8rem; margin: 0.5rem 0; }
+  li { margin: 0.25rem 0; }
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1.5rem; margin: 1.5rem 0; }
+  .toc a { color: var(--accent-alt); }
+  img { max-width: 100%; height: auto; border-radius: 8px; margin: 1rem 0; border: 1px solid var(--border); }
+  @media print { body { background: white; color: black; max-width: none; } :root { --bg: white; --surface: #f6f8fa; --border: #d0d7de; --text: #24292f; --text-muted: #57606a; --code-bg: #f6f8fa; --accent: #0969da; --accent-alt: #0550ae; } }
+  @media (max-width: 768px) { body { padding: 1rem 0.8rem 2rem; } pre { font-size: 0.78em; padding: 0.7rem; } table { font-size: 0.82em; } th, td { padding: 0.35rem 0.5rem; } }
+</style>
+
+</head>
+<body>
+  <h1 id="milestone-6-ego-centric">Milestone 6: Ego-Centric 场景映射设计文档</h1>
+<blockquote>
+<p>本文档说明如何将当前基于 EPIC-KITCHENS 的 RAG 视频检索架构迁移到 ego-centric（第一人称视角）采集场景，用于 embodied-AI 数据底座中的失败案例挖掘与事件检索。</p>
+<p><strong>相关文档</strong>: <a href="embodied_ai_training.html">Embodied-AI 模型训练白皮书</a> — 基于本数据管道可训练的具身智能模型分析</p>
+</blockquote>
+<hr />
+<h2 id="_1">系统架构总览</h2>
+<p><img alt="End-to-End Cloud Architecture" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAwIDgyMCIgZm9udC1mYW1pbHk9Ii1hcHBsZS1zeXN0ZW0sQmxpbmtNYWNTeXN0ZW1Gb250LFNlZ29lIFVJLHNhbnMtc2VyaWYiPgogIDxkZWZzPgogICAgPG1hcmtlciBpZD0iYXJyb3ctYmx1ZSIgbWFya2VyV2lkdGg9IjEwIiBtYXJrZXJIZWlnaHQ9IjciIHJlZlg9IjkiIHJlZlk9IjMuNSIgb3JpZW50PSJhdXRvIj48cG9seWdvbiBwb2ludHM9IjAgMCwgMTAgMy41LCAwIDciIGZpbGw9IiMyNTYzZWIiLz48L21hcmtlcj4KICAgIDxtYXJrZXIgaWQ9ImFycm93LW9yYW5nZSIgbWFya2VyV2lkdGg9IjEwIiBtYXJrZXJIZWlnaHQ9IjciIHJlZlg9IjkiIHJlZlk9IjMuNSIgb3JpZW50PSJhdXRvIj48cG9seWdvbiBwb2ludHM9IjAgMCwgMTAgMy41LCAwIDciIGZpbGw9IiNlYTU4MGMiLz48L21hcmtlcj4KICAgIDxtYXJrZXIgaWQ9ImFycm93LWdyZWVuIiBtYXJrZXJXaWR0aD0iMTAiIG1hcmtlckhlaWdodD0iNyIgcmVmWD0iOSIgcmVmWT0iMy41IiBvcmllbnQ9ImF1dG8iPjxwb2x5Z29uIHBvaW50cz0iMCAwLCAxMCAzLjUsIDAgNyIgZmlsbD0iIzA1OTY2OSIvPjwvbWFya2VyPgogICAgPG1hcmtlciBpZD0iYXJyb3ctcHVycGxlIiBtYXJrZXJXaWR0aD0iMTAiIG1hcmtlckhlaWdodD0iNyIgcmVmWD0iOSIgcmVmWT0iMy41IiBvcmllbnQ9ImF1dG8iPjxwb2x5Z29uIHBvaW50cz0iMCAwLCAxMCAzLjUsIDAgNyIgZmlsbD0iIzdjM2FlZCIvPjwvbWFya2VyPgogICAgPG1hcmtlciBpZD0iYXJyb3ctZ3JheSIgbWFya2VyV2lkdGg9IjEwIiBtYXJrZXJIZWlnaHQ9IjciIHJlZlg9IjkiIHJlZlk9IjMuNSIgb3JpZW50PSJhdXRvIj48cG9seWdvbiBwb2ludHM9IjAgMCwgMTAgMy41LCAwIDciIGZpbGw9IiM2YjcyODAiLz48L21hcmtlcj4KICAgIDxmaWx0ZXIgaWQ9InNoYWRvdyIgeD0iLTUlIiB5PSItNSUiIHdpZHRoPSIxMTAlIiBoZWlnaHQ9IjExMCUiPjxmZURyb3BTaGFkb3cgZHg9IjEiIGR5PSIyIiBzdGREZXZpYXRpb249IjIiIGZsb29kLW9wYWNpdHk9IjAuMTIiLz48L2ZpbHRlcj4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZGFzaFNjb3BlR3JhZCIgeDE9IjAiIHkxPSIwIiB4Mj0iMCIgeTI9IjEiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiM2MzY2ZjEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiM0ZjQ2ZTUiLz48L2xpbmVhckdyYWRpZW50PgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJmY0dyYWQiIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSIxIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjZjk3MzE2Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjZWE1ODBjIi8+PC9saW5lYXJHcmFkaWVudD4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZHZHcmFkIiB4MT0iMCIgeTE9IjAiIHgyPSIwIiB5Mj0iMSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzEwYjk4MSIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iIzA1OTY2OSIvPjwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9Im9zc0dyYWQiIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSIxIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjM2I4MmY2Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMjU2M2ViIi8+PC9saW5lYXJHcmFkaWVudD4KICA8L2RlZnM+CiAgPHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iODIwIiBmaWxsPSIjZmFmYWZhIi8+CiAgPHRleHQgeD0iNjAwIiB5PSIzNSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIyMCIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzFlMjkzYiI+UkFHIFZpZGVvIFNlYXJjaCDigJQgRW5kLXRvLUVuZCBDbG91ZCBBcmNoaXRlY3R1cmU8L3RleHQ+CiAgPHRleHQgeD0iNjAwIiB5PSI1NiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxMyIgZmlsbD0iIzY0NzQ4YiI+QWxpYmFiYSBDbG91ZCBTaW5nYXBvcmUgwrcgUmVhZC9Xcml0ZSBTZXBhcmF0aW9uIMK3IFNlcnZlcmxlc3MgRkM8L3RleHQ+CiAgPHRleHQgeD0iMzAwIiB5PSI5NSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxNCIgZm9udC13ZWlnaHQ9IjYwMCIgZmlsbD0iI2VhNTgwYyI+SU5HRVNUIFBJUEVMSU5FIChXcml0ZSBQYXRoKTwvdGV4dD4KICA8dGV4dCB4PSI5MDAiIHk9Ijk1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjE0IiBmb250LXdlaWdodD0iNjAwIiBmaWxsPSIjMjU2M2ViIj5RVUVSWSBTRVJWSUNFIChSZWFkIFBhdGgpPC90ZXh0PgogIDxyZWN0IHg9IjUwIiB5PSIxMDUiIHdpZHRoPSI1NDAiIGhlaWdodD0iNTYwIiByeD0iMTIiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZiYmYyNCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1kYXNoYXJyYXk9IjgsNCIgb3BhY2l0eT0iMC41Ii8+CiAgPHJlY3QgeD0iNjIwIiB5PSIxMDUiIHdpZHRoPSI1MzAiIGhlaWdodD0iNTYwIiByeD0iMTIiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzYwYTVmYSIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1kYXNoYXJyYXk9IjgsNCIgb3BhY2l0eT0iMC41Ii8+CiAgPHJlY3QgeD0iODAiIHk9IjEyNSIgd2lkdGg9IjEyMCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNmMWY1ZjkiIHN0cm9rZT0iI2NiZDVlMSIgc3Ryb2tlLXdpZHRoPSIxLjUiIGZpbHRlcj0idXJsKCNzaGFkb3cpIi8+CiAgPHRleHQgeD0iMTQwIiB5PSIxNTAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTMiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiMzMzQxNTUiPvCfk7kgVmlkZW8gVXBsb2FkPC90ZXh0PgogIDx0ZXh0IHg9IjE0MCIgeT0iMTY3IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjEwIiBmaWxsPSIjNjQ3NDhiIj5QMDFfMDMuTVA0PC90ZXh0PgogIDxsaW5lIHgxPSIyMDAiIHkxPSIxNTIiIHgyPSIyNTUiIHkyPSIxNTIiIHN0cm9rZT0iIzZiNzI4MCIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtZGFzaGFycmF5PSI0LDIiIG1hcmtlci1lbmQ9InVybCgjYXJyb3ctZ3JheSkiLz4KICA8cmVjdCB4PSIyMDciIHk9IjE0MiIgd2lkdGg9IjQwIiBoZWlnaHQ9IjEyIiBmaWxsPSIjZmFmYWZhIiBvcGFjaXR5PSIwLjk1Ii8+CiAgPHRleHQgeD0iMjI3IiB5PSIxNTEiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iOSIgZmlsbD0iIzZiNzI4MCI+dXBsb2FkPC90ZXh0PgogIDxnIGZpbHRlcj0idXJsKCNzaGFkb3cpIj4KICAgIDxlbGxpcHNlIGN4PSIzMjAiIGN5PSIxMzUiIHJ4PSI1NSIgcnk9IjE0IiBmaWxsPSJ1cmwoI29zc0dyYWQpIi8+CiAgICA8cmVjdCB4PSIyNjUiIHk9IjEzNSIgd2lkdGg9IjExMCIgaGVpZ2h0PSIzNSIgZmlsbD0idXJsKCNvc3NHcmFkKSIvPgogICAgPGVsbGlwc2UgY3g9IjMyMCIgY3k9IjE3MCIgcng9IjU1IiByeT0iMTQiIGZpbGw9InVybCgjb3NzR3JhZCkiLz4KICAgIDxlbGxpcHNlIGN4PSIzMjAiIGN5PSIxMzUiIHJ4PSI1NSIgcnk9IjE0IiBmaWxsPSJub25lIiBzdHJva2U9IiMxZDRlZDgiIHN0cm9rZS13aWR0aD0iMSIvPgogIDwvZz4KICA8dGV4dCB4PSIzMjAiIHk9IjE1OCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxMyIgZm9udC13ZWlnaHQ9IjYwMCIgZmlsbD0id2hpdGUiPk9TUyBCdWNrZXQ8L3RleHQ+CiAgPHRleHQgeD0iMzIwIiB5PSIxOTUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTAiIGZpbGw9IiM2NDc0OGIiPnJhdy12aWRlb3MvIChTaW5nYXBvcmUpPC90ZXh0PgogIDxsaW5lIHgxPSIzMjAiIHkxPSIxODUiIHgyPSIzMjAiIHkyPSIyMjUiIHN0cm9rZT0iI2VhNTgwYyIgc3Ryb2tlLXdpZHRoPSIyIiBtYXJrZXItZW5kPSJ1cmwoI2Fycm93LW9yYW5nZSkiLz4KICA8cmVjdCB4PSIyODIiIHk9IjE5NSIgd2lkdGg9Ijc2IiBoZWlnaHQ9IjE0IiBmaWxsPSIjZmFmYWZhIiBvcGFjaXR5PSIwLjk1Ii8+CiAgPHRleHQgeD0iMzIwIiB5PSIyMDUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iOSIgZmlsbD0iI2VhNTgwYyIgZm9udC13ZWlnaHQ9IjYwMCI+T1NTIEV2ZW50IFRyaWdnZXI8L3RleHQ+CiAgPGcgZmlsdGVyPSJ1cmwoI3NoYWRvdykiPgogICAgPHJlY3QgeD0iMjMwIiB5PSIyMzAiIHdpZHRoPSIxODAiIGhlaWdodD0iNTAiIHJ4PSIxMCIgZmlsbD0idXJsKCNmY0dyYWQpIi8+CiAgPC9nPgogIDx0ZXh0IHg9IjMyMCIgeT0iMjUyIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjEzIiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSJ3aGl0ZSI+RkM6IGluZ2VzdC1waXBlbGluZTwvdGV4dD4KICA8dGV4dCB4PSIzMjAiIHk9IjI2OCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxMCIgZmlsbD0iZmVkN2FhIj5GbGFzayDCtyBwb3J0IDkwMDAgwrcgNEdCIMK3IDkwMHM8L3RleHQ+CiAgPHJlY3QgeD0iODAiIHk9IjMxMCIgd2lkdGg9IjIwMCIgaGVpZ2h0PSI0MiIgcng9IjYiIGZpbGw9IiNmMWY1ZjkiIHN0cm9rZT0iIzQ3NTU2OSIgc3Ryb2tlLXdpZHRoPSIxIiBvcGFjaXR5PSIwLjkiLz4KICA8dGV4dCB4PSIxODAiIHk9IjMzNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxMiIgZm9udC13ZWlnaHQ9IjUwMCIgZmlsbD0iIzQ3NTU2OSI+MS4gRG93bmxvYWQgdmlkZW88L3RleHQ+CiAgPHJlY3QgeD0iMzAwIiB5PSIzMTAiIHdpZHRoPSIyMDAiIGhlaWdodD0iNDIiIHJ4PSI2IiBmaWxsPSIjZjFmNWY5IiBzdHJva2U9IiM0NzU1NjkiIHN0cm9rZS13aWR0aD0iMSIgb3BhY2l0eT0iMC45Ii8+CiAgPHRleHQgeD0iNDAwIiB5PSIzMzYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtd2VpZ2h0PSI1MDAiIGZpbGw9IiM0NzU1NjkiPjIuIE9wZW5DVuaKveW4pzwvdGV4dD4KICA8cmVjdCB4PSI4MCIgeT0iMzcwIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjQyIiByeD0iNiIgZmlsbD0iI2VkZTlmZSIgc3Ryb2tlPSIjNmQyOGQ5IiBzdHJva2Utd2lkdGg9IjEiIG9wYWNpdHk9IjAuOSIvPgogIDx0ZXh0IHg9IjE4MCIgeT0iMzk2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjEyIiBmb250LXdlaWdodD0iNTAwIiBmaWxsPSIjNmQyOGQ5Ij4zLiBEYXNoU2NvcGUgRW1iZWQ8L3RleHQ+CiAgPHJlY3QgeD0iMzAwIiB5PSIzNzAiIHdpZHRoPSIyMDAiIGhlaWdodD0iNDIiIHJ4PSI2IiBmaWxsPSIjZWRlOWZlIiBzdHJva2U9IiM2ZDI4ZDkiIHN0cm9rZS13aWR0aD0iMSIgb3BhY2l0eT0iMC45Ii8+CiAgPHRleHQgeD0iNDAwIiB5PSIzOTYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtd2VpZ2h0PSI1MDAiIGZpbGw9IiM2ZDI4ZDkiPjQuIFF3ZW4tVkwgQ2FwdGlvbjwvdGV4dD4KICA8cmVjdCB4PSI4MCIgeT0iNDMwIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjQyIiByeD0iNiIgZmlsbD0iI2RiZWFmZSIgc3Ryb2tlPSIjMWQ0ZWQ4IiBzdHJva2Utd2lkdGg9IjEiIG9wYWNpdHk9IjAuOSIvPgogIDx0ZXh0IHg9IjE4MCIgeT0iNDU2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjEyIiBmb250LXdlaWdodD0iNTAwIiBmaWxsPSIjMWQ0ZWQ4Ij41LiBVcGxvYWQgZnJhbWVz4oaST1NTPC90ZXh0PgogIDxyZWN0IHg9IjMwMCIgeT0iNDMwIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjQyIiByeD0iNiIgZmlsbD0iI2QxZmFlNSIgc3Ryb2tlPSIjMDQ3ODU3IiBzdHJva2Utd2lkdGg9IjEiIG9wYWNpdHk9IjAuOSIvPgogIDx0ZXh0IHg9IjQwMCIgeT0iNDU2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjEyIiBmb250LXdlaWdodD0iNTAwIiBmaWxsPSIjMDQ3ODU3Ij42LiBEYXNoVmVjdG9yIHVwc2VydDwvdGV4dD4KICA8bGluZSB4MT0iMTgwIiB5MT0iMzUyIiB4Mj0iMTgwIiB5Mj0iMzcwIiBzdHJva2U9IiM5NGEzYjgiIHN0cm9rZS13aWR0aD0iMS41IiBtYXJrZXItZW5kPSJ1cmwoI2Fycm93LWdyYXkpIi8+CiAgPGxpbmUgeDE9IjQwMCIgeTE9IjM1MiIgeDI9IjQwMCIgeTI9IjM3MCIgc3Ryb2tlPSIjOTRhM2I4IiBzdHJva2Utd2lkdGg9IjEuNSIgbWFya2VyLWVuZD0idXJsKCNhcnJvdy1ncmF5KSIvPgogIDxsaW5lIHgxPSIxODAiIHkxPSI0MTIiIHgyPSIxODAiIHkyPSI0MzAiIHN0cm9rZT0iIzk0YTNiOCIgc3Ryb2tlLXdpZHRoPSIxLjUiIG1hcmtlci1lbmQ9InVybCgjYXJyb3ctZ3JheSkiLz4KICA8bGluZSB4MT0iNDAwIiB5MT0iNDEyIiB4Mj0iNDAwIiB5Mj0iNDMwIiBzdHJva2U9IiM5NGEzYjgiIHN0cm9rZS13aWR0aD0iMS41IiBtYXJrZXItZW5kPSJ1cmwoI2Fycm93LWdyYXkpIi8+CiAgPGxpbmUgeDE9IjI4MCIgeTE9IjMzMSIgeDI9IjMwMCIgeTI9IjMzMSIgc3Ryb2tlPSIjOTRhM2I4IiBzdHJva2Utd2lkdGg9IjEuNSIgbWFya2VyLWVuZD0idXJsKCNhcnJvdy1ncmF5KSIvPgogIDxsaW5lIHgxPSIyODAiIHkxPSIzOTEiIHgyPSIzMDAiIHkyPSIzOTEiIHN0cm9rZT0iIzdjM2FlZCIgc3Ryb2tlLXdpZHRoPSIxLjUiIG1hcmtlci1lbmQ9InVybCgjYXJyb3ctcHVycGxlKSIvPgogIDxsaW5lIHgxPSIyODAiIHkxPSI0NTEiIHgyPSIzMDAiIHkyPSI0NTEiIHN0cm9rZT0iIzA1OTY2OSIgc3Ryb2tlLXdpZHRoPSIxLjUiIG1hcmtlci1lbmQ9InVybCgjYXJyb3ctZ3JlZW4pIi8+CiAgPGxpbmUgeDE9IjI4MCIgeTE9IjI4MCIgeDI9IjE4MCIgeTI9IjMxMCIgc3Ryb2tlPSIjZWE1ODBjIiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWRhc2hhcnJheT0iMywyIiBtYXJrZXItZW5kPSJ1cmwoI2Fycm93LW9yYW5nZSkiLz4KICA8ZyBmaWx0ZXI9InVybCgjc2hhZG93KSI+CiAgICA8cmVjdCB4PSI2NDAiIHk9IjMxMCIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1MCIgcng9IjEwIiBmaWxsPSJ1cmwoI2Rhc2hTY29wZUdyYWQpIi8+CiAgPC9nPgogIDx0ZXh0IHg9IjcyMCIgeT0iMzMyIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjEzIiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSJ3aGl0ZSI+RGFzaFNjb3BlIEFQSTwvdGV4dD4KICA8dGV4dCB4PSI3MjAiIHk9IjM0OCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxMCIgZmlsbD0iI2M3ZDJmZSI+U2luZ2Fwb3JlIGludGwgZW5kcG9pbnQ8L3RleHQ+CiAgPGxpbmUgeDE9IjI4MCIgeTE9IjM5MSIgeDI9IjY0MCIgeTI9IjMzNSIgc3Ryb2tlPSIjN2MzYWVkIiBzdHJva2Utd2lkdGg9IjEuNSIgbWFya2VyLWVuZD0idXJsKCNhcnJvdy1wdXJwbGUpIi8+CiAgPHJlY3QgeD0iNDIwIiB5PSIzNTUiIHdpZHRoPSI4MCIgaGVpZ2h0PSIxMiIgZmlsbD0iI2ZhZmFmYSIgb3BhY2l0eT0iMC45NSIvPgogIDx0ZXh0IHg9IjQ2MCIgeT0iMzY0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjkiIGZpbGw9IiM3YzNhZWQiPmltYWdl4oaSMTE1Mi1kaW08L3RleHQ+CiAgPGxpbmUgeDE9IjUwMCIgeTE9IjM5MSIgeDI9IjY0MCIgeTI9IjM0NSIgc3Ryb2tlPSIjN2MzYWVkIiBzdHJva2Utd2lkdGg9IjEuNSIgbWFya2VyLWVuZD0idXJsKCNhcnJvdy1wdXJwbGUpIi8+CiAgPHJlY3QgeD0iNTMwIiB5PSIzNzUiIHdpZHRoPSI2MCIgaGVpZ2h0PSIxMiIgZmlsbD0iI2ZhZmFmYSIgb3BhY2l0eT0iMC45NSIvPgogIDx0ZXh0IHg9IjU2MCIgeT0iMzg0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjkiIGZpbGw9IiM3YzNhZWQiPmltZ+KGkkpTT048L3RleHQ+CiAgPGcgZmlsdGVyPSJ1cmwoI3NoYWRvdykiPgogICAgPHJlY3QgeD0iNzgwIiB5PSIxMjUiIHdpZHRoPSIxNjAiIGhlaWdodD0iNTUiIHJ4PSI4IiBmaWxsPSIjMWUyOTNiIi8+CiAgICA8Y2lyY2xlIGN4PSI3OTUiIGN5PSIxNDAiIHI9IjQiIGZpbGw9IiNlZjQ0NDQiLz48Y2lyY2xlIGN4PSI4MDciIGN5PSIxNDAiIHI9IjQiIGZpbGw9IiNmNTllMGIiLz48Y2lyY2xlIGN4PSI4MTkiIGN5PSIxNDAiIHI9IjQiIGZpbGw9IiMyMmM1NWUiLz4KICA8L2c+CiAgPHRleHQgeD0iODYwIiB5PSIxNTgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTMiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiNlMmU4ZjAiPvCfjJAgQnJvd3NlciAoSFRNTC9KUyk8L3RleHQ+CiAgPHRleHQgeD0iODYwIiB5PSIxNzMiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTAiIGZpbGw9IiM5NGEzYjgiPndlYi9pbmRleC5odG1sPC90ZXh0PgogIDxsaW5lIHgxPSI4NjAiIHkxPSIxODAiIHgyPSI4NjAiIHkyPSIyMjUiIHN0cm9rZT0iIzI1NjNlYiIgc3Ryb2tlLXdpZHRoPSIyIiBtYXJrZXItZW5kPSJ1cmwoI2Fycm93LWJsdWUpIi8+CiAgPHJlY3QgeD0iODI1IiB5PSIxOTAiIHdpZHRoPSI3MCIgaGVpZ2h0PSIxNCIgZmlsbD0iI2ZhZmFmYSIgb3BhY2l0eT0iMC45NSIvPgogIDx0ZXh0IHg9Ijg2MCIgeT0iMjAwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjkiIGZpbGw9IiMyNTYzZWIiPkdFVCAvc2VhcmNoP3E9PC90ZXh0PgogIDxnIGZpbHRlcj0idXJsKCNzaGFkb3cpIj4KICAgIDxyZWN0IHg9Ijc3MCIgeT0iMjMwIiB3aWR0aD0iMTgwIiBoZWlnaHQ9IjUwIiByeD0iMTAiIGZpbGw9InVybCgjZmNHcmFkKSIvPgogIDwvZz4KICA8dGV4dCB4PSI4NjAiIHk9IjI1MiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxMyIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0id2hpdGUiPkZDOiBxdWVyeS1zZXJ2aWNlPC90ZXh0PgogIDx0ZXh0IHg9Ijg2MCIgeT0iMjY4IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjEwIiBmaWxsPSIjZmVkN2FhIj5GbGFzayDCtyBwb3J0IDkwMDAgwrcgMkdCIMK3IDEwIGNvbmN1cnJlbnQ8L3RleHQ+CiAgPHJlY3QgeD0iNzcwIiB5PSIzMTAiIHdpZHRoPSIxODAiIGhlaWdodD0iNDIiIHJ4PSI2IiBmaWxsPSIjZWRlOWZlIiBzdHJva2U9IiM2ZDI4ZDkiIHN0cm9rZS13aWR0aD0iMSIgb3BhY2l0eT0iMC45Ii8+CiAgPHRleHQgeD0iODYwIiB5PSIzMzYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtd2VpZ2h0PSI1MDAiIGZpbGw9IiM2ZDI4ZDkiPjEuIFRleHTihpJFbWJlZGRpbmc8L3RleHQ+CiAgPHJlY3QgeD0iNzcwIiB5PSIzNzAiIHdpZHRoPSIxODAiIGhlaWdodD0iNDIiIHJ4PSI2IiBmaWxsPSIjZDFmYWU1IiBzdHJva2U9IiMwNDc4NTciIHN0cm9rZS13aWR0aD0iMSIgb3BhY2l0eT0iMC45Ii8+CiAgPHRleHQgeD0iODYwIiB5PSIzOTYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtd2VpZ2h0PSI1MDAiIGZpbGw9IiMwNDc4NTciPjIuIERhc2hWZWN0b3IgQU5OK2ZpbHRlcjwvdGV4dD4KICA8cmVjdCB4PSI3NzAiIHk9IjQzMCIgd2lkdGg9IjE4MCIgaGVpZ2h0PSI0MiIgcng9IjYiIGZpbGw9IiNkYmVhZmUiIHN0cm9rZT0iIzFkNGVkOCIgc3Ryb2tlLXdpZHRoPSIxIiBvcGFjaXR5PSIwLjkiLz4KICA8dGV4dCB4PSI4NjAiIHk9IjQ1NiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxMiIgZm9udC13ZWlnaHQ9IjUwMCIgZmlsbD0iIzFkNGVkOCI+My4gUmV0dXJuIHRvcC1rIEpTT048L3RleHQ+CiAgPGxpbmUgeDE9Ijg2MCIgeTE9IjM1MiIgeDI9Ijg2MCIgeTI9IjM3MCIgc3Ryb2tlPSIjOTRhM2I4IiBzdHJva2Utd2lkdGg9IjEuNSIgbWFya2VyLWVuZD0idXJsKCNhcnJvdy1ncmF5KSIvPgogIDxsaW5lIHgxPSI4NjAiIHkxPSI0MTIiIHgyPSI4NjAiIHkyPSI0MzAiIHN0cm9rZT0iIzk0YTNiOCIgc3Ryb2tlLXdpZHRoPSIxLjUiIG1hcmtlci1lbmQ9InVybCgjYXJyb3ctZ3JheSkiLz4KICA8bGluZSB4MT0iODYwIiB5MT0iMjgwIiB4Mj0iODYwIiB5Mj0iMzEwIiBzdHJva2U9IiNlYTU4MGMiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtZGFzaGFycmF5PSIzLDIiIG1hcmtlci1lbmQ9InVybCgjYXJyb3ctb3JhbmdlKSIvPgogIDxsaW5lIHgxPSI3NzAiIHkxPSIzMzEiIHgyPSI4MDAiIHkyPSIzMzUiIHN0cm9rZT0iIzdjM2FlZCIgc3Ryb2tlLXdpZHRoPSIxLjUiIG1hcmtlci1lbmQ9InVybCgjYXJyb3ctcHVycGxlKSIvPgogIDxyZWN0IHg9Ijc3NSIgeT0iMzIwIiB3aWR0aD0iNDAiIGhlaWdodD0iMTIiIGZpbGw9IiNmYWZhZmEiIG9wYWNpdHk9IjAuOTUiLz4KICA8dGV4dCB4PSI3OTUiIHk9IjMyOSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSI5IiBmaWxsPSIjN2MzYWVkIj50ZXh04oaSdmVjPC90ZXh0PgogIDxwYXRoIGQ9Ik0gODYwLDQ3MiBDIDg2MCw1MDAgODYwLDE4MCA4NjAsMTgwIiBmaWxsPSJub25lIiBzdHJva2U9IiMyNTYzZWIiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtZGFzaGFycmF5PSI0LDIiIG1hcmtlci1lbmQ9InVybCgjYXJyb3ctYmx1ZSkiLz4KICA8cmVjdCB4PSI4NzAiIHk9IjQ4MCIgd2lkdGg9IjY1IiBoZWlnaHQ9IjEyIiBmaWxsPSIjZmFmYWZhIiBvcGFjaXR5PSIwLjk1Ii8+CiAgPHRleHQgeD0iOTAyIiB5PSI0ODkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iOSIgZmlsbD0iIzI1NjNlYiI+SlNPTiArIE9TUyBVUkxzPC90ZXh0PgogIDxnIGZpbHRlcj0idXJsKCNzaGFkb3cpIj4KICAgIDxlbGxpcHNlIGN4PSI2MDAiIGN5PSI1NDAiIHJ4PSI4MCIgcnk9IjE4IiBmaWxsPSJ1cmwoI2R2R3JhZCkiLz4KICAgIDxyZWN0IHg9IjUyMCIgeT0iNTQwIiB3aWR0aD0iMTYwIiBoZWlnaHQ9IjUwIiBmaWxsPSJ1cmwoI2R2R3JhZCkiLz4KICAgIDxlbGxpcHNlIGN4PSI2MDAiIGN5PSI1OTAiIHJ4PSI4MCIgcnk9IjE4IiBmaWxsPSJ1cmwoI2R2R3JhZCkiLz4KICAgIDxlbGxpcHNlIGN4PSI2MDAiIGN5PSI1NDAiIHJ4PSI4MCIgcnk9IjE4IiBmaWxsPSJub25lIiBzdHJva2U9IiMwNDc4NTciIHN0cm9rZS13aWR0aD0iMSIvPgogICAgPGxpbmUgeDE9IjUzNSIgeTE9IjU1NSIgeDI9IjY2NSIgeTI9IjU1NSIgc3Ryb2tlPSIjMDY0ZTNiIiBzdHJva2Utd2lkdGg9IjAuNSIgb3BhY2l0eT0iMC4zIi8+CiAgICA8bGluZSB4MT0iNTM1IiB5MT0iNTcwIiB4Mj0iNjY1IiB5Mj0iNTcwIiBzdHJva2U9IiMwNjRlM2IiIHN0cm9rZS13aWR0aD0iMC41IiBvcGFjaXR5PSIwLjMiLz4KICAgIDxsaW5lIHgxPSI1MzUiIHkxPSI1ODUiIHgyPSI2NjUiIHkyPSI1ODUiIHN0cm9rZT0iIzA2NGUzYiIgc3Ryb2tlLXdpZHRoPSIwLjUiIG9wYWNpdHk9IjAuMyIvPgogIDwvZz4KICA8dGV4dCB4PSI2MDAiIHk9IjU2OCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxNCIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0id2hpdGUiPkRhc2hWZWN0b3I8L3RleHQ+CiAgPHRleHQgeD0iNjAwIiB5PSI1ODUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTAiIGZpbGw9IiNhN2YzZDAiPmNvbGxlY3Rpb246IHNjZW5lX2ZyYW1lczwvdGV4dD4KICA8dGV4dCB4PSI2MDAiIHk9IjYyNSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxMCIgZmlsbD0iIzY0NzQ4YiI+MTE1Mi1kaW0gwrcgSE5TVyBpbmRleCDCtyAxOCBtZXRhZGF0YSBmaWVsZHMgwrcgU2luZ2Fwb3JlPC90ZXh0PgogIDxwYXRoIGQ9Ik0gNDAwLDQ3MiBDIDQ1MCw1MDAgNTIwLDUzMCA1NDAsNTU1IiBmaWxsPSJub25lIiBzdHJva2U9IiMwNTk2NjkiIHN0cm9rZS13aWR0aD0iMiIgbWFya2VyLWVuZD0idXJsKCNhcnJvdy1ncmVlbikiLz4KICA8cmVjdCB4PSI0MzAiIHk9IjUxMCIgd2lkdGg9IjYwIiBoZWlnaHQ9IjEyIiBmaWxsPSIjZmFmYWZhIiBvcGFjaXR5PSIwLjk1Ii8+CiAgPHRleHQgeD0iNDYwIiB5PSI1MTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iOSIgZmlsbD0iIzA1OTY2OSIgZm9udC13ZWlnaHQ9IjYwMCI+dXBzZXJ0ICh3cml0ZSk8L3RleHQ+CiAgPHBhdGggZD0iTSA4NjAsNDEyIEMgODAwLDQ1MCA3MDAsNTIwIDY2MCw1NTUiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzI1NjNlYiIgc3Ryb2tlLXdpZHRoPSIyIiBtYXJrZXItZW5kPSJ1cmwoI2Fycm93LWJsdWUpIi8+CiAgPHJlY3QgeD0iNzMwIiB5PSI0OTAiIHdpZHRoPSI1NSIgaGVpZ2h0PSIxMiIgZmlsbD0iI2ZhZmFmYSIgb3BhY2l0eT0iMC45NSIvPgogIDx0ZXh0IHg9Ijc1NyIgeT0iNDk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjkiIGZpbGw9IiMyNTYzZWIiIGZvbnQtd2VpZ2h0PSI2MDAiPnF1ZXJ5IChyZWFkKTwvdGV4dD4KICA8ZyBmaWx0ZXI9InVybCgjc2hhZG93KSI+CiAgICA8ZWxsaXBzZSBjeD0iMTgwIiBjeT0iNTQwIiByeD0iNjAiIHJ5PSIxNCIgZmlsbD0idXJsKCNvc3NHcmFkKSIvPgogICAgPHJlY3QgeD0iMTIwIiB5PSI1NDAiIHdpZHRoPSIxMjAiIGhlaWdodD0iMzUiIGZpbGw9InVybCgjb3NzR3JhZCkiLz4KICAgIDxlbGxpcHNlIGN4PSIxODAiIGN5PSI1NzUiIHJ4PSI2MCIgcnk9IjE0IiBmaWxsPSJ1cmwoI29zc0dyYWQpIi8+CiAgICA8ZWxsaXBzZSBjeD0iMTgwIiBjeT0iNTQwIiByeD0iNjAiIHJ5PSIxNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMWQ0ZWQ4IiBzdHJva2Utd2lkdGg9IjEiLz4KICA8L2c+CiAgPHRleHQgeD0iMTgwIiB5PSI1NjMiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IndoaXRlIj5PU1MgZnJhbWVzLzwvdGV4dD4KICA8dGV4dCB4PSIxODAiIHk9IjYwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxMCIgZmlsbD0iIzY0NzQ4YiI+ZnJhbWUgaW1hZ2VzIChKUEcpPC90ZXh0PgogIDxsaW5lIHgxPSIxODAiIHkxPSI0NzIiIHgyPSIxODAiIHkyPSI1MjYiIHN0cm9rZT0iIzI1NjNlYiIgc3Ryb2tlLXdpZHRoPSIxLjUiIG1hcmtlci1lbmQ9InVybCgjYXJyb3ctYmx1ZSkiLz4KICA8cmVjdCB4PSIxNDAiIHk9IjQ5MCIgd2lkdGg9IjgwIiBoZWlnaHQ9IjEyIiBmaWxsPSIjZmFmYWZhIiBvcGFjaXR5PSIwLjk1Ii8+CiAgPHRleHQgeD0iMTgwIiB5PSI0OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iOSIgZmlsbD0iIzI1NjNlYiI+cHV0X29iamVjdDwvdGV4dD4KICA8cGF0aCBkPSJNIDI0MCw1NTUgQyA0MDAsNjIwIDcwMCw2MjAgODYwLDE4MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNmI3MjgwIiBzdHJva2Utd2lkdGg9IjEiIHN0cm9rZS1kYXNoYXJyYXk9IjMsMyIgbWFya2VyLWVuZD0idXJsKCNhcnJvdy1ncmF5KSIvPgogIDxyZWN0IHg9IjQ3MCIgeT0iNjM1IiB3aWR0aD0iOTAiIGhlaWdodD0iMTIiIGZpbGw9IiNmYWZhZmEiIG9wYWNpdHk9IjAuOTUiLz4KICA8dGV4dCB4PSI1MTUiIHk9IjY0NCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSI5IiBmaWxsPSIjNmI3MjgwIj5pbWcgc3JjPU9TUyBVUkw8L3RleHQ+CiAgPHJlY3QgeD0iNTAiIHk9IjcwMCIgd2lkdGg9IjExMDAiIGhlaWdodD0iOTAiIHJ4PSI4IiBmaWxsPSJ3aGl0ZSIgc3Ryb2tlPSIjZTJlOGYwIiBzdHJva2Utd2lkdGg9IjEiLz4KICA8dGV4dCB4PSI3MCIgeT0iNzIyIiBmb250LXNpemU9IjEyIiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjMzM0MTU1Ij5MZWdlbmQ8L3RleHQ+CiAgPGxpbmUgeDE9IjcwIiB5MT0iNzQwIiB4Mj0iMTAwIiB5Mj0iNzQwIiBzdHJva2U9IiMyNTYzZWIiIHN0cm9rZS13aWR0aD0iMiIgbWFya2VyLWVuZD0idXJsKCNhcnJvdy1ibHVlKSIvPgogIDx0ZXh0IHg9IjEwOCIgeT0iNzQ0IiBmb250LXNpemU9IjExIiBmaWxsPSIjNDc1NTY5Ij5QcmltYXJ5IGRhdGEgZmxvdyAocXVlcnkvcmVzcG9uc2UpPC90ZXh0PgogIDxsaW5lIHgxPSIzMzAiIHkxPSI3NDAiIHgyPSIzNjAiIHkyPSI3NDAiIHN0cm9rZT0iI2VhNTgwYyIgc3Ryb2tlLXdpZHRoPSIyIiBtYXJrZXItZW5kPSJ1cmwoI2Fycm93LW9yYW5nZSkiLz4KICA8dGV4dCB4PSIzNjgiIHk9Ijc0NCIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzQ3NTU2OSI+Q29udHJvbCAvIHRyaWdnZXIgKE9TUyBldmVudCk8L3RleHQ+CiAgPGxpbmUgeDE9IjU5MCIgeTE9Ijc0MCIgeDI9IjYyMCIgeTI9Ijc0MCIgc3Ryb2tlPSIjN2MzYWVkIiBzdHJva2Utd2lkdGg9IjEuNSIgbWFya2VyLWVuZD0idXJsKCNhcnJvdy1wdXJwbGUpIi8+CiAgPHRleHQgeD0iNjI4IiB5PSI3NDQiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiM0NzU1NjkiPkVtYmVkZGluZyAvIHRyYW5zZm9ybSAoRGFzaFNjb3BlKTwvdGV4dD4KICA8bGluZSB4MT0iNzAiIHkxPSI3NjIiIHgyPSIxMDAiIHkyPSI3NjIiIHN0cm9rZT0iIzA1OTY2OSIgc3Ryb2tlLXdpZHRoPSIyIiBtYXJrZXItZW5kPSJ1cmwoI2Fycm93LWdyZWVuKSIvPgogIDx0ZXh0IHg9IjEwOCIgeT0iNzY2IiBmb250LXNpemU9IjExIiBmaWxsPSIjNDc1NTY5Ij5Xcml0ZSB0byBEYXNoVmVjdG9yICh1cHNlcnQpPC90ZXh0PgogIDxsaW5lIHgxPSIzMzAiIHkxPSI3NjIiIHgyPSIzNjAiIHkyPSI3NjIiIHN0cm9rZT0iIzZiNzI4MCIgc3Ryb2tlLXdpZHRoPSIxIiBzdHJva2UtZGFzaGFycmF5PSI0LDIiIG1hcmtlci1lbmQ9InVybCgjYXJyb3ctZ3JheSkiLz4KICA8dGV4dCB4PSIzNjgiIHk9Ijc2NiIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzQ3NTU2OSI+QXN5bmMgLyBpbWFnZSBsb2FkIChPU1PihpJicm93c2VyKTwvdGV4dD4KICA8bGluZSB4MT0iNTkwIiB5MT0iNzYyIiB4Mj0iNjIwIiB5Mj0iNzYyIiBzdHJva2U9IiMyNTYzZWIiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtZGFzaGFycmF5PSI0LDIiIG1hcmtlci1lbmQ9InVybCgjYXJyb3ctYmx1ZSkiLz4KICA8dGV4dCB4PSI2MjgiIHk9Ijc2NiIgZm9udC1zaXplPSIxMSIgZmlsbD0iIzQ3NTU2OSI+UmVzcG9uc2UgZGF0YSAoSlNPTiArIFVSTHMpPC90ZXh0PgogIDx0ZXh0IHg9Ijg1MCIgeT0iNzIyIiBmb250LXNpemU9IjExIiBmb250LXdlaWdodD0iNjAwIiBmaWxsPSIjMzM0MTU1Ij5LZXkgRGVzaWduOiBSZWFkL1dyaXRlIFNlcGFyYXRpb248L3RleHQ+CiAgPHRleHQgeD0iODUwIiB5PSI3NDAiIGZvbnQtc2l6ZT0iMTAiIGZpbGw9IiM2NDc0OGIiPuKAoiBJbmdlc3QgYW5kIFF1ZXJ5IGFyZSBpbmRlcGVuZGVudCBGQyBmdW5jdGlvbnM8L3RleHQ+CiAgPHRleHQgeD0iODUwIiB5PSI3NTUiIGZvbnQtc2l6ZT0iMTAiIGZpbGw9IiM2NDc0OGIiPuKAoiBEYXNoVmVjdG9yIHN1cHBvcnRzIGNvbmN1cnJlbnQgcmVhZC93cml0ZTwvdGV4dD4KICA8dGV4dCB4PSI4NTAiIHk9Ijc3MCIgZm9udC1zaXplPSIxMCIgZmlsbD0iIzY0NzQ4YiI+4oCiIFplcm8gY291cGxpbmc6IHVwbG9hZCB2aWRlbyDiiaAgYmxvY2sgc2VhcmNoPC90ZXh0Pgo8L3N2Zz4=" /></p>
+<blockquote>
+<p><strong>上图</strong>: 完整的端到端云架构。左侧为摄入管线（写路径），右侧为查询服务（读路径），两者完全解耦。DashVector 作为共享存储，支持并发读写。</p>
+</blockquote>
+<h3 id="_2">生产环境：流式摄入 + 查询分离</h3>
+<div class="codehilite"><pre><span></span><code><span class="w">                     </span><span class="err">┌──────────────┐</span>
+<span class="w">                     </span><span class="err">│</span><span class="w">   </span><span class="n">Camera</span><span class="w"> </span><span class="o">/</span><span class="w">   </span><span class="err">│</span>
+<span class="w">                     </span><span class="err">│</span><span class="w">   </span><span class="n">Uploader</span><span class="w">   </span><span class="err">│</span><span class="w">  </span><span class="err">◀──</span><span class="w"> </span><span class="err">持续上传视频流</span>
+<span class="w">                     </span><span class="err">└──────┬───────┘</span>
+<span class="w">                            </span><span class="err">│</span><span class="w"> </span><span class="n">MP4</span><span class="w"> </span><span class="n">upload</span>
+<span class="w">                            </span><span class="err">▼</span>
+<span class="w">                     </span><span class="err">┌──────────────┐</span>
+<span class="w">                     </span><span class="err">│</span><span class="w">   </span><span class="n">OSS</span><span class="w"> </span><span class="n">Bucket</span><span class="w"> </span><span class="err">│</span><span class="w">  </span><span class="err">◀──</span><span class="w"> </span><span class="n">raw</span><span class="o">-</span><span class="n">videos</span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="err">高持久性</span><span class="p">,</span><span class="w"> </span><span class="err">低成本</span><span class="p">)</span>
+<span class="w">                     </span><span class="err">│</span><span class="w">  </span><span class="n">raw</span><span class="o">-</span><span class="n">videos</span><span class="o">/</span><span class="w"> </span><span class="err">│</span>
+<span class="w">                     </span><span class="err">└──────┬───────┘</span>
+<span class="w">                            </span><span class="err">│</span><span class="w"> </span><span class="n">OSS</span><span class="w"> </span><span class="n">Event</span><span class="w"> </span><span class="n">Notification</span><span class="w"> </span><span class="p">(</span><span class="n">ObjectCreated</span><span class="p">)</span>
+<span class="w">                            </span><span class="err">▼</span>
+<span class="w">        </span><span class="err">┌───────────────────┼───────────────────┐</span>
+<span class="w">        </span><span class="err">│</span><span class="w">                   </span><span class="err">│</span><span class="w">                   </span><span class="err">│</span>
+<span class="w">        </span><span class="err">▼</span><span class="w">                   </span><span class="err">▼</span><span class="w">                   </span><span class="err">▼</span>
+<span class="w">   </span><span class="err">┌─────────┐</span><span class="w">       </span><span class="err">┌──────────┐</span><span class="w">        </span><span class="err">┌──────────┐</span>
+<span class="w">   </span><span class="err">│</span><span class="w"> </span><span class="n">FC</span><span class="o">-</span><span class="mi">1</span><span class="w">    </span><span class="err">│</span><span class="w">       </span><span class="err">│</span><span class="w"> </span><span class="n">FC</span><span class="o">-</span><span class="mi">2</span><span class="w">     </span><span class="err">│</span><span class="w">        </span><span class="err">│</span><span class="w"> </span><span class="n">FC</span><span class="o">-</span><span class="mi">3</span><span class="w">     </span><span class="err">│</span>
+<span class="w">   </span><span class="err">│</span><span class="n">Frame</span><span class="w">    </span><span class="err">│</span><span class="w">       </span><span class="err">│</span><span class="n">Embedder</span><span class="w">  </span><span class="err">│</span><span class="w">        </span><span class="err">│</span><span class="n">Captioner</span><span class="w"> </span><span class="err">│</span>
+<span class="w">   </span><span class="err">│</span><span class="n">Extractor</span><span class="err">│──────▶│</span><span class="n">b64</span><span class="err">→</span><span class="mi">1152</span><span class="w">  </span><span class="err">│</span><span class="w">        </span><span class="err">│</span><span class="n">Qwen</span><span class="o">-</span><span class="n">VL</span><span class="w">   </span><span class="err">│</span>
+<span class="w">   </span><span class="err">│</span><span class="mf">0.5</span><span class="o">-</span><span class="mi">2</span><span class="n">fps</span><span class="w"> </span><span class="err">│</span><span class="w">       </span><span class="err">│</span><span class="p">(</span><span class="n">DashScope</span><span class="err">│</span><span class="w">        </span><span class="err">│图片→</span><span class="n">JSON</span><span class="w"> </span><span class="err">│</span>
+<span class="w">   </span><span class="err">│</span><span class="n">OpenCV</span><span class="w">   </span><span class="err">│</span><span class="w">       </span><span class="err">│</span><span class="w"> </span><span class="n">API</span><span class="p">)</span><span class="w">     </span><span class="err">│</span><span class="w">        </span><span class="err">│结构化描述</span><span class="w"> </span><span class="err">│</span>
+<span class="w">   </span><span class="err">│→</span><span class="w"> </span><span class="n">frames</span><span class="w"> </span><span class="err">│</span><span class="w">       </span><span class="err">│</span><span class="n">batch</span><span class="err">≤</span><span class="mi">8</span><span class="w">   </span><span class="err">│</span><span class="w">        </span><span class="err">│</span><span class="o">~</span><span class="mi">2</span><span class="n">s</span><span class="o">/</span><span class="n">frame</span><span class="w"> </span><span class="err">│</span>
+<span class="w">   </span><span class="err">└────┬────┘</span><span class="w">       </span><span class="err">└────┬─────┘</span><span class="w">        </span><span class="err">└────┬─────┘</span>
+<span class="w">        </span><span class="err">│</span><span class="w">                 </span><span class="err">│</span><span class="w">                   </span><span class="err">│</span>
+<span class="w">        </span><span class="err">▼</span><span class="w">                 </span><span class="err">▼</span><span class="w">                   </span><span class="err">▼</span>
+<span class="w">   </span><span class="err">┌──────────┐</span><span class="w">    </span><span class="err">┌──────────────┐</span><span class="w">    </span><span class="err">┌──────────────┐</span>
+<span class="w">   </span><span class="err">│</span><span class="w"> </span><span class="n">OSS</span><span class="w">      </span><span class="err">│</span><span class="w">    </span><span class="err">│</span><span class="w"> </span><span class="n">MNS</span><span class="o">/</span><span class="n">RocketMQ</span><span class="w"> </span><span class="err">│</span><span class="w">    </span><span class="err">│</span><span class="w"> </span><span class="n">MNS</span><span class="o">/</span><span class="n">RocketMQ</span><span class="w"> </span><span class="err">│</span>
+<span class="w">   </span><span class="err">│</span><span class="w"> </span><span class="n">frames</span><span class="o">/</span><span class="w">  </span><span class="err">│</span><span class="w">    </span><span class="err">│</span><span class="w"> </span><span class="n">embed_ready</span><span class="w">  </span><span class="err">│</span><span class="w">    </span><span class="err">│</span><span class="w"> </span><span class="n">capt_ready</span><span class="w">   </span><span class="err">│</span>
+<span class="w">   </span><span class="err">└──────────┘</span><span class="w">    </span><span class="err">└──────┬───────┘</span><span class="w">    </span><span class="err">└──────┬───────┘</span>
+<span class="w">                          </span><span class="err">│</span><span class="w">                   </span><span class="err">│</span>
+<span class="w">                          </span><span class="err">└─────────┬─────────┘</span>
+<span class="w">                                    </span><span class="err">▼</span>
+<span class="w">                           </span><span class="err">┌──────────────┐</span>
+<span class="w">                           </span><span class="err">│</span><span class="w"> </span><span class="n">FC</span><span class="o">-</span><span class="mi">4</span><span class="w">         </span><span class="err">│</span>
+<span class="w">                           </span><span class="err">│</span><span class="w"> </span><span class="n">Indexer</span><span class="w">      </span><span class="err">│</span><span class="w">  </span><span class="err">◀──</span><span class="w"> </span><span class="err">定时触发</span><span class="w"> </span><span class="p">(</span><span class="mi">30</span><span class="n">s</span><span class="p">)</span>
+<span class="w">                           </span><span class="err">│</span><span class="w"> </span><span class="err">合并</span><span class="n">embed</span><span class="w">    </span><span class="err">│</span><span class="w">      </span><span class="err">批量</span><span class="w"> </span><span class="n">upsert</span>
+<span class="w">                           </span><span class="err">│</span><span class="w"> </span><span class="o">+</span><span class="n">caption</span><span class="w">     </span><span class="err">│</span>
+<span class="w">                           </span><span class="err">│</span><span class="w"> </span><span class="err">→</span><span class="n">DashVector</span><span class="w">  </span><span class="err">│</span>
+<span class="w">                           </span><span class="err">└──────┬───────┘</span>
+<span class="w">                                  </span><span class="err">│</span><span class="w"> </span><span class="n">batch</span><span class="w"> </span><span class="n">upsert</span>
+<span class="w">                                  </span><span class="err">▼</span>
+<span class="w">                    </span><span class="err">┌──────────────────────────┐</span>
+<span class="w">                    </span><span class="err">│</span><span class="w">     </span><span class="n">DashVector</span><span class="w">            </span><span class="err">│</span><span class="w">  </span><span class="err">◀──</span><span class="w"> </span><span class="err">向量库</span><span class="w"> </span><span class="p">(</span><span class="err">新加坡</span><span class="p">)</span>
+<span class="w">                    </span><span class="err">│</span><span class="w">  </span><span class="err">实时写入</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="err">并发查询</span><span class="w">       </span><span class="err">│</span><span class="w">      </span><span class="err">写后可立刻查</span>
+<span class="w">                    </span><span class="err">│</span><span class="w">  </span><span class="n">HNSW</span><span class="w"> </span><span class="err">索引自动更新</span><span class="w">         </span><span class="err">│</span><span class="w">      </span><span class="err">无需</span><span class="w"> </span><span class="n">re</span><span class="o">-</span><span class="n">index</span>
+<span class="w">                    </span><span class="err">└─────────────┬────────────┘</span>
+<span class="w">                                  </span><span class="err">│</span>
+<span class="w">                    </span><span class="err">┌─────────────┴─────────────┐</span>
+<span class="w">                    </span><span class="err">│</span><span class="w">                           </span><span class="err">│</span>
+<span class="w">                    </span><span class="err">▼</span><span class="w">                           </span><span class="err">▼</span>
+<span class="w">           </span><span class="err">┌──────────────┐</span><span class="w">            </span><span class="err">┌──────────────┐</span>
+<span class="w">           </span><span class="err">│</span><span class="w"> </span><span class="err">写路径</span><span class="w"> </span><span class="p">(</span><span class="n">Ingest</span><span class="p">)</span><span class="err">│</span><span class="w">            </span><span class="err">│</span><span class="w"> </span><span class="err">读路径</span><span class="w"> </span><span class="p">(</span><span class="n">Query</span><span class="p">)</span><span class="w"> </span><span class="err">│</span>
+<span class="w">           </span><span class="err">│</span><span class="w"> </span><span class="n">OSS</span><span class="w"> </span><span class="n">Event</span><span class="err">→</span><span class="n">FC</span><span class="w">  </span><span class="err">│</span><span class="w">            </span><span class="err">│</span><span class="w"> </span><span class="n">HTTP</span><span class="err">→</span><span class="n">API</span><span class="w"> </span><span class="n">GW</span><span class="w">   </span><span class="err">│</span>
+<span class="w">           </span><span class="err">│</span><span class="w"> </span><span class="err">异步</span><span class="p">,</span><span class="w"> </span><span class="err">批处理</span><span class="w">   </span><span class="err">│</span><span class="w">            </span><span class="err">│</span><span class="w"> </span><span class="err">同步</span><span class="p">,</span><span class="w"> </span><span class="err">低延迟</span><span class="w">   </span><span class="err">│</span>
+<span class="w">           </span><span class="err">│</span><span class="w"> </span><span class="err">可积压</span><span class="p">,</span><span class="w"> </span><span class="err">可重试</span><span class="w"> </span><span class="err">│</span><span class="w">            </span><span class="err">│</span><span class="w"> </span><span class="err">预留实例</span><span class="w">       </span><span class="err">│</span>
+<span class="w">           </span><span class="err">└──────────────┘</span><span class="w">            </span><span class="err">└──────────────┘</span>
+
+<span class="w">  </span><span class="err">读</span><span class="o">/</span><span class="err">写完全解耦</span><span class="w"> </span><span class="err">—</span><span class="w"> </span><span class="err">各走各的</span><span class="w"> </span><span class="n">FC</span><span class="w"> </span><span class="err">函数</span><span class="p">,</span><span class="w"> </span><span class="n">DashVector</span><span class="w"> </span><span class="err">原生支持并发读写</span>
+
+<span class="w">  </span><span class="err">─────────────────────────────────────────────────────────────</span>
+
+<span class="w">  </span><span class="err">查询服务</span><span class="w"> </span><span class="p">(</span><span class="err">独立部署</span><span class="p">,</span><span class="w"> </span><span class="err">不受摄入影响</span><span class="p">):</span>
+
+<span class="w">  </span><span class="err">┌──────────────┐</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="n">API</span><span class="w"> </span><span class="n">Gateway</span><span class="w">  </span><span class="err">│</span><span class="w">  </span><span class="err">◀──</span><span class="w"> </span><span class="n">GET</span><span class="w"> </span><span class="o">/</span><span class="n">search</span><span class="err">?</span><span class="n">q</span><span class="o">=</span><span class="n">take</span><span class="o">+</span><span class="n">cup</span><span class="o">&amp;</span><span class="n">top_k</span><span class="o">=</span><span class="mi">10</span>
+<span class="w">  </span><span class="err">└──────┬───────┘</span>
+<span class="w">         </span><span class="err">▼</span>
+<span class="w">  </span><span class="err">┌──────────────┐</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="n">FC</span><span class="o">-</span><span class="mi">5</span><span class="w">         </span><span class="err">│</span><span class="w">  </span><span class="err">◀──</span><span class="w"> </span><span class="n">Query</span><span class="w"> </span><span class="n">Service</span><span class="w"> </span><span class="p">(</span><span class="err">预留实例</span><span class="p">,</span><span class="w"> </span><span class="err">无冷启动</span><span class="p">)</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">文本→</span><span class="n">embed</span><span class="w">   </span><span class="err">│</span><span class="w">      </span><span class="n">DashScope</span><span class="w"> </span><span class="n">text</span><span class="w"> </span><span class="n">embedding</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="mi">200</span><span class="n">ms</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">→</span><span class="n">DashVector</span><span class="w">  </span><span class="err">│</span><span class="w">      </span><span class="n">ANN</span><span class="w"> </span><span class="err">向量检索</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="mi">50</span><span class="n">ms</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">→</span><span class="n">top</span><span class="o">-</span><span class="n">k</span><span class="w"> </span><span class="err">结果</span><span class="w">  </span><span class="err">│</span><span class="w">      </span><span class="err">数组后过滤</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="mi">5</span><span class="n">ms</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">→返回帧</span><span class="o">+</span><span class="n">meta</span><span class="w"> </span><span class="err">│</span><span class="w">      </span><span class="err">─────────────────</span>
+<span class="w">  </span><span class="err">└──────────────┘</span><span class="w">      </span><span class="err">总延迟</span><span class="p">:</span><span class="w"> </span><span class="o">~</span><span class="mi">250</span><span class="n">ms</span><span class="w"> </span><span class="p">(</span><span class="err">热启动</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="_3">开发环境：本地混合管线 (当前实际运行)</h3>
+<div class="codehilite"><pre><span></span><code><span class="w">  </span><span class="err">你的</span><span class="w"> </span><span class="n">Mac</span><span class="w"> </span><span class="p">(</span><span class="err">本地</span><span class="p">)</span><span class="w">                              </span><span class="err">阿里云</span><span class="w"> </span><span class="p">(</span><span class="err">新加坡</span><span class="p">)</span>
+<span class="w">  </span><span class="err">┌───────────────────────────┐</span><span class="w">               </span><span class="err">┌──────────────────────┐</span>
+<span class="w">  </span><span class="err">│</span><span class="w">                           </span><span class="err">│</span><span class="w">               </span><span class="err">│</span><span class="w">                      </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="n">EPIC</span><span class="o">-</span><span class="n">KITCHENS</span><span class="o">/</span><span class="w">            </span><span class="err">│</span><span class="w">               </span><span class="err">│</span><span class="w">  </span><span class="n">DashScope</span><span class="w"> </span><span class="n">API</span><span class="w">       </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w">   </span><span class="n">P01</span><span class="o">/</span><span class="n">videos</span><span class="o">/*.</span><span class="n">MP4</span><span class="w">        </span><span class="err">│</span><span class="w">               </span><span class="err">│</span><span class="w">  </span><span class="p">(</span><span class="n">embedding</span><span class="o">+</span><span class="n">caption</span><span class="p">)</span><span class="w"> </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w">     </span><span class="err">↓</span><span class="w"> </span><span class="p">(</span><span class="n">OpenCV</span><span class="p">)</span><span class="w">            </span><span class="err">│</span><span class="w">               </span><span class="err">│</span><span class="w">                      </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="n">storage</span><span class="o">/</span><span class="n">frames</span><span class="o">/</span><span class="w">           </span><span class="err">│──</span><span class="n">base64</span><span class="err">──────▶│</span><span class="w">  </span><span class="n">tongyi</span><span class="o">-</span><span class="n">emb</span><span class="o">-</span><span class="n">vision</span><span class="w">   </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w">   </span><span class="n">P01_03</span><span class="o">/*.</span><span class="n">jpg</span><span class="w"> </span><span class="p">(</span><span class="err">本地磁盘</span><span class="p">)</span><span class="w">  </span><span class="err">│</span><span class="w">               </span><span class="err">│</span><span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="mi">1152</span><span class="o">-</span><span class="n">dim</span><span class="w"> </span><span class="err">向量</span><span class="w">     </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w">                           </span><span class="err">│──</span><span class="n">base64</span><span class="err">──────▶│</span><span class="w">  </span><span class="n">qwen</span><span class="o">-</span><span class="n">vl</span><span class="o">-</span><span class="nb">max</span><span class="w">         </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w">                           </span><span class="err">│◀──向量</span><span class="o">+</span><span class="n">JSON</span><span class="err">───│</span><span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="err">结构化</span><span class="w"> </span><span class="n">caption</span><span class="w">    </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w">                           </span><span class="err">│</span><span class="w">               </span><span class="err">│</span><span class="w">                      </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w">                           </span><span class="err">│──</span><span class="n">upload</span><span class="w"> </span><span class="n">JPG</span><span class="err">──▶│</span><span class="w">  </span><span class="n">OSS</span><span class="w"> </span><span class="n">frames</span><span class="o">/</span><span class="w">         </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w">                           </span><span class="err">│</span><span class="w">               </span><span class="err">│</span><span class="w">  </span><span class="p">(</span><span class="err">帧图片存储</span><span class="p">)</span><span class="w">         </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w">                           </span><span class="err">│──</span><span class="n">upsert</span><span class="err">──────▶│</span><span class="w">  </span><span class="n">DashVector</span><span class="w">          </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w">                           </span><span class="err">│</span><span class="w">               </span><span class="err">│</span><span class="w">  </span><span class="p">(</span><span class="err">向量</span><span class="o">+</span><span class="n">metadata</span><span class="p">)</span><span class="w">      </span><span class="err">│</span>
+<span class="w">  </span><span class="err">└───────────────────────────┘</span><span class="w">               </span><span class="err">└──────────────────────┘</span>
+
+<span class="w">  </span><span class="err">数据流</span><span class="p">:</span>
+<span class="w">  </span><span class="err">①</span><span class="w"> </span><span class="err">视频在本地磁盘</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">OpenCV</span><span class="w"> </span><span class="err">抽帧</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">本地</span><span class="w"> </span><span class="n">JPG</span><span class="w"> </span><span class="err">文件</span>
+<span class="w">  </span><span class="err">②</span><span class="w"> </span><span class="err">本地</span><span class="w"> </span><span class="n">JPG</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">base64</span><span class="w"> </span><span class="err">编码</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">DashScope</span><span class="w"> </span><span class="n">Embedding</span><span class="w"> </span><span class="n">API</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="mi">1152</span><span class="o">-</span><span class="n">dim</span><span class="w"> </span><span class="err">向量</span>
+<span class="w">  </span><span class="err">③</span><span class="w"> </span><span class="err">本地</span><span class="w"> </span><span class="n">JPG</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">DashScope</span><span class="w"> </span><span class="n">Qwen</span><span class="o">-</span><span class="n">VL</span><span class="w"> </span><span class="n">API</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">JSON</span><span class="w"> </span><span class="n">caption</span>
+<span class="w">  </span><span class="err">④</span><span class="w"> </span><span class="err">本地</span><span class="w"> </span><span class="n">JPG</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">上传到</span><span class="w"> </span><span class="n">OSS</span><span class="w"> </span><span class="p">(</span><span class="err">帧图片云端可访问</span><span class="p">)</span>
+<span class="w">  </span><span class="err">⑤</span><span class="w"> </span><span class="err">向量</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">caption</span><span class="w"> </span><span class="n">metadata</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">DashVector</span><span class="o">.</span><span class="n">upsert</span><span class="p">()</span>
+
+<span class="w">  </span><span class="err">关键区别</span><span class="w"> </span><span class="n">vs</span><span class="w"> </span><span class="err">生产架构</span><span class="p">:</span>
+<span class="w">  </span><span class="err">┌──────────────────┬────────────────────────┬──────────────────────────┐</span>
+<span class="w">  </span><span class="err">│</span><span class="w">                  </span><span class="err">│</span><span class="w"> </span><span class="err">当前</span><span class="w"> </span><span class="p">(</span><span class="err">本地混合</span><span class="p">)</span><span class="w">          </span><span class="err">│</span><span class="w"> </span><span class="err">生产目标</span><span class="w"> </span><span class="p">(</span><span class="err">全云端</span><span class="p">)</span><span class="w">          </span><span class="err">│</span>
+<span class="w">  </span><span class="err">├──────────────────┼────────────────────────┼──────────────────────────┤</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">视频存储</span><span class="w">         </span><span class="err">│</span><span class="w"> </span><span class="err">本地磁盘</span><span class="w">                 </span><span class="err">│</span><span class="w"> </span><span class="n">OSS</span><span class="w"> </span><span class="n">raw</span><span class="o">-</span><span class="n">videos</span><span class="o">/</span><span class="w">           </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">帧图片</span><span class="w">           </span><span class="err">│</span><span class="w"> </span><span class="err">本地磁盘</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">OSS</span><span class="w"> </span><span class="p">(</span><span class="err">上传后</span><span class="p">)</span><span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="n">OSS</span><span class="w"> </span><span class="n">frames</span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="err">原生</span><span class="p">)</span><span class="w">        </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">抽帧</span><span class="w">             </span><span class="err">│</span><span class="w"> </span><span class="err">本地</span><span class="w"> </span><span class="n">OpenCV</span><span class="w">              </span><span class="err">│</span><span class="w"> </span><span class="n">FC</span><span class="o">-</span><span class="mi">1</span><span class="w"> </span><span class="p">(</span><span class="n">OSS</span><span class="w"> </span><span class="n">event</span><span class="w"> </span><span class="err">触发</span><span class="p">)</span><span class="w">     </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="n">Embedding</span><span class="w"> </span><span class="err">输入</span><span class="w">   </span><span class="err">│</span><span class="w"> </span><span class="err">本地文件</span><span class="w"> </span><span class="n">base64</span><span class="w">          </span><span class="err">│</span><span class="w"> </span><span class="n">OSS</span><span class="w"> </span><span class="n">URL</span><span class="w"> </span><span class="p">(</span><span class="err">无需</span><span class="w"> </span><span class="n">base64</span><span class="p">)</span><span class="w">     </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="n">Caption</span><span class="w"> </span><span class="err">输入</span><span class="w">     </span><span class="err">│</span><span class="w"> </span><span class="err">本地文件路径</span><span class="w">             </span><span class="err">│</span><span class="w"> </span><span class="n">OSS</span><span class="w"> </span><span class="n">URL</span><span class="w">                   </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">触发方式</span><span class="w">         </span><span class="err">│</span><span class="w"> </span><span class="err">手动</span><span class="w"> </span><span class="n">python</span><span class="w"> </span><span class="n">script</span><span class="w">       </span><span class="err">│</span><span class="w"> </span><span class="n">OSS</span><span class="w"> </span><span class="n">ObjectCreated</span><span class="w"> </span><span class="err">事件</span><span class="w">    </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">弹性伸缩</span><span class="w">         </span><span class="err">│</span><span class="w"> </span><span class="err">无</span><span class="w"> </span><span class="p">(</span><span class="err">单机</span><span class="p">)</span><span class="w">                </span><span class="err">│</span><span class="w"> </span><span class="n">FC</span><span class="w"> </span><span class="err">自动伸缩</span><span class="w">               </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">断网影响</span><span class="w">         </span><span class="err">│</span><span class="w"> </span><span class="err">全部中断</span><span class="w">                 </span><span class="err">│</span><span class="w"> </span><span class="err">无</span><span class="w"> </span><span class="p">(</span><span class="err">云端自治</span><span class="p">)</span><span class="w">             </span><span class="err">│</span>
+<span class="w">  </span><span class="err">└──────────────────┴────────────────────────┴──────────────────────────┘</span>
+
+<span class="w">  </span><span class="err">迁移到生产架构的改动</span><span class="p">:</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="err">本地</span><span class="w"> </span><span class="n">ingest_epic</span><span class="o">.</span><span class="n">py</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">拆成</span><span class="w"> </span><span class="n">FC</span><span class="o">-</span><span class="mi">1</span><span class="o">~</span><span class="mi">4</span><span class="w"> </span><span class="err">函数</span><span class="w"> </span><span class="p">(</span><span class="err">已有</span><span class="w"> </span><span class="n">deploy</span><span class="o">/</span><span class="n">fc</span><span class="o">/</span><span class="w"> </span><span class="err">代码</span><span class="p">)</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">base64</span><span class="w"> </span><span class="err">编码</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">直接用</span><span class="w"> </span><span class="n">OSS</span><span class="w"> </span><span class="n">URL</span><span class="w"> </span><span class="err">调</span><span class="w"> </span><span class="n">DashScope</span><span class="w"> </span><span class="n">API</span><span class="w"> </span><span class="p">(</span><span class="err">更快</span><span class="p">)</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="err">手动运行</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">OSS</span><span class="w"> </span><span class="n">Event</span><span class="w"> </span><span class="err">自动触发</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="err">本地帧存储</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">OSS</span><span class="w"> </span><span class="err">原生存储</span>
+</code></pre></div>
+
+<h2 id="embedding">Embedding 原理详解</h2>
+<h3 id="embedding_1">什么是多模态 Embedding？</h3>
+<p>Embedding 是将高维的非结构化数据（图片、文本）压缩为固定长度的稠密向量，<br />
+使得<strong>语义相似的内容在向量空间中距离接近</strong>。</p>
+<div class="codehilite"><pre><span></span><code>图片 &quot;一个人拿着杯子&quot;     ──Embedding──▶  [0.12, -0.34, 0.89, ..., 0.05]  (1152维)
+文本 &quot;holding a cup&quot;      ──Embedding──▶  [0.11, -0.36, 0.91, ..., 0.03]  (1152维)
+
+cosine_similarity = 0.94  ← 语义高度相似，向量接近！
+</code></pre></div>
+
+<h3 id="tongyi-embedding-vision-plus">tongyi-embedding-vision-plus 的工作流程</h3>
+<div class="codehilite"><pre><span></span><code><span class="nt">输入帧</span><span class="w"> </span><span class="o">(</span><span class="nt">JPG</span><span class="o">,</span><span class="w"> </span><span class="nt">1920</span><span class="err">×</span><span class="nt">1080</span><span class="o">)</span>
+<span class="w">  </span><span class="err">│</span>
+<span class="w">  </span><span class="err">├─</span><span class="w"> </span><span class="nt">Step</span><span class="w"> </span><span class="nt">1</span><span class="o">:</span><span class="w"> </span><span class="nt">base64</span><span class="w"> </span><span class="nt">编码</span>
+<span class="w">  </span><span class="err">│</span><span class="w">     </span><span class="nt">frame_bytes</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="s2">&quot;data:image/jpeg;base64,/9j/4AAQ...&quot;</span>
+<span class="w">  </span><span class="err">│</span>
+<span class="w">  </span><span class="err">├─</span><span class="w"> </span><span class="nt">Step</span><span class="w"> </span><span class="nt">2</span><span class="o">:</span><span class="w"> </span><span class="nt">Vision</span><span class="w"> </span><span class="nt">Transformer</span><span class="w"> </span><span class="o">(</span><span class="nt">ViT</span><span class="o">)</span><span class="w"> </span><span class="nt">编码</span>
+<span class="w">  </span><span class="err">│</span><span class="w">     </span><span class="nt">图片被切为</span><span class="w"> </span><span class="nt">16</span><span class="err">×</span><span class="nt">16</span><span class="w"> </span><span class="nt">patches</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="nt">序列输入</span><span class="w"> </span><span class="nt">Transformer</span>
+<span class="w">  </span><span class="err">│</span><span class="w">     </span><span class="err">→</span><span class="w"> </span><span class="nt">输出</span><span class="w"> </span><span class="nt">1152-dim</span><span class="w"> </span><span class="nt">特征向量</span>
+<span class="w">  </span><span class="err">│</span><span class="w">     </span><span class="err">→</span><span class="w"> </span><span class="nt">经过对比学习训练</span><span class="w"> </span><span class="o">(</span><span class="nt">CLIP-style</span><span class="o">):</span>
+<span class="w">  </span><span class="err">│</span><span class="w">        </span><span class="nt">正样本</span><span class="o">:</span><span class="w"> </span><span class="nt">匹配的</span><span class="w"> </span><span class="nt">图片-文本</span><span class="w"> </span><span class="nt">pair</span><span class="w"> </span><span class="nt">拉近</span>
+<span class="w">  </span><span class="err">│</span><span class="w">        </span><span class="nt">负样本</span><span class="o">:</span><span class="w"> </span><span class="nt">不匹配的</span><span class="w"> </span><span class="nt">pair</span><span class="w"> </span><span class="nt">推远</span>
+<span class="w">  </span><span class="err">│</span>
+<span class="w">  </span><span class="err">└─</span><span class="w"> </span><span class="nt">Step</span><span class="w"> </span><span class="nt">3</span><span class="o">:</span><span class="w"> </span><span class="nt">归一化</span>
+<span class="w">        </span><span class="nt">向量</span><span class="w"> </span><span class="nt">L2-normalize</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="o">||</span><span class="nt">v</span><span class="o">||</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nt">1</span>
+<span class="w">        </span><span class="nt">便于余弦相似度计算</span><span class="o">:</span><span class="w"> </span><span class="nt">cos</span><span class="o">(</span><span class="nt">a</span><span class="o">,</span><span class="nt">b</span><span class="o">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nt">a</span><span class="err">·</span><span class="nt">b</span>
+</code></pre></div>
+
+<h3 id="1152">为什么选 1152 维？</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: left;">语义容量</th>
+<th style="text-align: left;">存储/1M向量</th>
+<th style="text-align: left;">检索速度</th>
+<th style="text-align: left;">适合场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">256</td>
+<td style="text-align: left;">低</td>
+<td style="text-align: left;">~1 GB</td>
+<td style="text-align: left;">极快</td>
+<td style="text-align: left;">粗筛，大规模</td>
+</tr>
+<tr>
+<td style="text-align: left;">768</td>
+<td style="text-align: left;">中</td>
+<td style="text-align: left;">~3 GB</td>
+<td style="text-align: left;">快</td>
+<td style="text-align: left;">一般应用</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>1152</strong></td>
+<td style="text-align: left;"><strong>高</strong></td>
+<td style="text-align: left;"><strong>~4.6 GB</strong></td>
+<td style="text-align: left;"><strong>中</strong></td>
+<td style="text-align: left;"><strong>我们的选择</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">2560</td>
+<td style="text-align: left;">极高</td>
+<td style="text-align: left;">~10 GB</td>
+<td style="text-align: left;">慢</td>
+<td style="text-align: left;">高精度需求</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Rationale</strong>：1152 维是 tongyi-embedding-vision-plus 的固定输出维度，<br />
+由模型训练时确定，在语义容量和计算效率之间取平衡点。</p>
+<h3 id="_4">同一个语义空间 — 跨模态检索的核心</h3>
+<p>所有 tongyi 多模态模型共享同一个语义空间。这意味着：</p>
+<div class="codehilite"><pre><span></span><code>图片 embedding 和 文本 embedding 可以直接比较！
+
+&quot;take cup&quot; ──text embed──▶  v_text  = [0.12, -0.34, ...]
+  cup图片  ──image embed─▶  v_image = [0.11, -0.36, ...]
+                              cos(v_text, v_image) = 0.94  ← 可比较！
+</code></pre></div>
+
+<p>因此检索时无需额外对齐：文本 query → text embedding → 直接和图片向量算相似度。</p>
+<hr />
+<h2 id="_5">向量数据库原理</h2>
+<h3 id="top-k">核心问题：如何从百万级向量中快速找到 Top-K？</h3>
+<div class="codehilite"><pre><span></span><code>暴力搜索:
+  query_vec vs 1,000,000 个向量 → 1,000,000 次比较
+  → 太慢 (秒级延迟)
+
+近似最近邻 (ANN):
+  用索引结构预排序，只搜索候选子集
+  → 毫秒级延迟，召回率 &gt; 95%
+</code></pre></div>
+
+<h3 id="dashvector-hnsw">DashVector 的 HNSW 索引</h3>
+<p>HNSW (Hierarchical Navigable Small World) — 多层图索引：</p>
+<div class="codehilite"><pre><span></span><code>Layer 2 (稀疏):  ○────○          ← 长距离跳转，快速定位区域
+                 │
+Layer 1 (中等):  ○──○──○──○      ← 中距离导航
+                 │  │  │
+Layer 0 (密集):  ○─○─○─○─○─○─○  ← 精确搜索 (所有向量都在 Layer 0)
+
+搜索过程:
+  query_vec →
+    从顶层入口点开始
+    → 逐层下降 (greedy search 每层最近邻)
+    → 到达 Layer 0 进行精确搜索
+    → 返回 top-K
+</code></pre></div>
+
+<h3 id="_6">混合检索流程</h3>
+<p>DashVector 支持向量召回 + 标量字段过滤的组合查询：</p>
+<div class="codehilite"><pre><span></span><code>query(&quot;take cup&quot;, top_k=10, video_id=&quot;P01_03&quot;)
+
+  Step 1: 向量召回 (ANN)
+    ┌──────────────────────────────────┐
+    │ text &quot;take cup&quot; → DashScope       │
+    │ → 1152-dim query vector           │
+    └──────────────┬───────────────────┘
+                   ▼
+    ┌──────────────────────────────────┐
+    │ DashVector HNSW 索引搜索           │
+    │ → 找到最相似的所有帧向量            │
+    └──────────────┬───────────────────┘
+                   ▼
+  Step 2: 标量过滤 (server-side)
+    ┌──────────────────────────────────┐
+    │ filter: video_id = &quot;P01_03&quot;       │
+    │ → 过滤掉其他视频的帧               │
+    └──────────────┬───────────────────┘
+                   ▼
+  Step 3: 数组过滤 (client-side)
+    ┌──────────────────────────────────┐
+    │ objects contain &quot;cup&quot;            │
+    │ → Python 端后处理过滤              │
+    └──────────────┬───────────────────┘
+                   ▼
+             top-10 结果
+</code></pre></div>
+
+<h3 id="_7">为什么数组过滤放客户端？</h3>
+<p>新加坡 DashVector 集群<strong>不支持 <code>contain_any</code> / <code>contain_all</code> 操作符</strong>。<br />
+解决方案：<br />
+- <strong>标量字段</strong>（video_id, lighting, category）→ DashVector 服务端过滤<br />
+- <strong>数组字段</strong>（objects, actions）→ Python 客户端后过滤</p>
+<div class="codehilite"><pre><span></span><code>Server-side filters (DashVector SQL-like):
+  ✅ lighting = &quot;bright&quot;
+  ✅ video_id = &quot;P01_03&quot;
+  ✅ is_anomaly = false
+  ✅ action_label = &quot;take&quot;
+
+Client-side filters (Python):
+  ✅ any(obj in frame.objects for obj in query_objects)
+  ✅ all(act in frame.actions for act in query_actions)
+</code></pre></div>
+
+<p><strong>Rationale</strong>：当前数据集小（164-650 帧），客户端过滤无性能压力。<br />
+规模扩大后可用 <code>objects_str</code> 逗号分隔字段 + <code>like</code> 过滤迁移到服务端。</p>
+<h3 id="_8">相似度度量</h3>
+<p>DashVector 使用<strong>余弦相似度</strong>作为默认度量 (metric="cosine")：</p>
+<div class="codehilite"><pre><span></span><code>cosine(a, b) = (a · b) / (||a|| × ||b||)
+
+值域: [-1, 1]
+  1.0  = 完全相同方向 (最相关)
+  0.0  = 正交 (无关)
+ -1.0  = 完全相反 (最不相关)
+
+DashVector 返回的 score = cosine_similarity
+</code></pre></div>
+
+<hr />
+<h2 id="qwen-vl-vs-bge-vl">Qwen-VL vs BGE-VL 模型对比</h2>
+<h3 id="_9">模型规格总览</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: left;">Qwen3-VL-Embedding (2B)</th>
+<th style="text-align: left;">Qwen3-VL-Embedding (8B)</th>
+<th style="text-align: left;">BGE-VL-base</th>
+<th style="text-align: left;">BGE-VL-large</th>
+<th style="text-align: left;">BGE-VL-MLLM-S2</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>参数量</strong></td>
+<td style="text-align: left;">2B</td>
+<td style="text-align: left;">8B</td>
+<td style="text-align: left;">0.15B</td>
+<td style="text-align: left;">0.43B</td>
+<td style="text-align: left;">7.57B</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>向量维度</strong></td>
+<td style="text-align: left;">2048 (64~2048)</td>
+<td style="text-align: left;">4096 (64~4096)</td>
+<td style="text-align: left;">512</td>
+<td style="text-align: left;">未公布</td>
+<td style="text-align: left;">未公布</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>模型大小</strong></td>
+<td style="text-align: left;">~4 GB</td>
+<td style="text-align: left;">~16 GB</td>
+<td style="text-align: left;">299 MB</td>
+<td style="text-align: left;">855 MB</td>
+<td style="text-align: left;">15.14 GB</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>架构</strong></td>
+<td style="text-align: left;">Qwen3-VL Transformer</td>
+<td style="text-align: left;">Qwen3-VL Transformer</td>
+<td style="text-align: left;">CLIP-ViT-B/16</td>
+<td style="text-align: left;">CLIP-ViT-L</td>
+<td style="text-align: left;">MLLM (多模态大模型)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>视频支持</strong></td>
+<td style="text-align: left;">✅ (≤50MB)</td>
+<td style="text-align: left;">✅ (≤50MB)</td>
+<td style="text-align: left;">❌</td>
+<td style="text-align: left;">❌</td>
+<td style="text-align: left;">❌</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>文本上下文</strong></td>
+<td style="text-align: left;">32K tokens</td>
+<td style="text-align: left;">32K tokens</td>
+<td style="text-align: left;">77 tokens (CLIP)</td>
+<td style="text-align: left;">77 tokens (CLIP)</td>
+<td style="text-align: left;">未公布</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>语言</strong></td>
+<td style="text-align: left;">33种</td>
+<td style="text-align: left;">33种</td>
+<td style="text-align: left;">英文为主</td>
+<td style="text-align: left;">英文为主</td>
+<td style="text-align: left;">英文为主</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>独立向量</strong></td>
+<td style="text-align: left;">✅ (默认)</td>
+<td style="text-align: left;">✅ (默认)</td>
+<td style="text-align: left;">✅</td>
+<td style="text-align: left;">✅</td>
+<td style="text-align: left;">✅</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>融合向量</strong></td>
+<td style="text-align: left;">✅ (enable_fusion)</td>
+<td style="text-align: left;">✅ (enable_fusion)</td>
+<td style="text-align: left;">✅</td>
+<td style="text-align: left;">✅</td>
+<td style="text-align: left;">✅</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>开源协议</strong></td>
+<td style="text-align: left;">Apache 2.0</td>
+<td style="text-align: left;">Apache 2.0</td>
+<td style="text-align: left;">MIT</td>
+<td style="text-align: left;">MIT</td>
+<td style="text-align: left;">MIT</td>
+</tr>
+</tbody>
+</table>
+<h3 id="benchmark">Benchmark 对比</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Benchmark</th>
+<th style="text-align: center;">Qwen3-VL-8B</th>
+<th style="text-align: center;">Qwen3-VL-2B</th>
+<th style="text-align: center;">BGE-VL-MLLM</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>MMEB-V2 Overall</strong></td>
+<td style="text-align: center;"><strong>77.9</strong></td>
+<td style="text-align: center;">73.4</td>
+<td style="text-align: center;">未公布</td>
+<td style="text-align: left;">78个数据集综合</td>
+</tr>
+<tr>
+<td style="text-align: left;">MMEB Image Overall</td>
+<td style="text-align: center;">80.1</td>
+<td style="text-align: center;">75.0</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: left;">图像检索+QA</td>
+</tr>
+<tr>
+<td style="text-align: left;">MMEB Video Overall</td>
+<td style="text-align: center;">66.1</td>
+<td style="text-align: center;">61.1</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: left;">视频检索 (BGE-VL不支持)</td>
+</tr>
+<tr>
+<td style="text-align: left;">MMEB VisDoc VR</td>
+<td style="text-align: center;">88.8</td>
+<td style="text-align: center;">86.3</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: left;">视觉文档检索</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>MMTEB Mean (Task)</strong></td>
+<td style="text-align: center;">67.88</td>
+<td style="text-align: center;">63.87</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: left;">纯文本多任务</td>
+</tr>
+<tr>
+<td style="text-align: left;">MMTEB Retrieval</td>
+<td style="text-align: center;">81.08</td>
+<td style="text-align: center;">78.50</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: left;">文本检索</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>CIRCO (组合检索)</strong></td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">BGE-VL-base <strong>超越</strong> 50× 大模型</td>
+<td style="text-align: left;">BGE-VL 的核心优势</td>
+</tr>
+<tr>
+<td style="text-align: left;">MMEB Zero-Shot</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;"><strong>SOTA</strong></td>
+<td style="text-align: left;">BGE-VL-MLLM 领先</td>
+</tr>
+<tr>
+<td style="text-align: left;">MMEB Fine-Tuning</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;"><strong>SOTA</strong> (+7.1% over prev)</td>
+<td style="text-align: left;">经过微调后</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_10">部署方式对比</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">部署方式</th>
+<th style="text-align: left;">Qwen-VL (DashScope)</th>
+<th style="text-align: left;">Qwen-VL (自建)</th>
+<th style="text-align: left;">BGE-VL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>API 调用</strong></td>
+<td style="text-align: left;">✅ DashScope</td>
+<td style="text-align: left;">❌</td>
+<td style="text-align: left;">❌</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>本地部署</strong></td>
+<td style="text-align: left;">❌ (云端模型)</td>
+<td style="text-align: left;">✅ GPU 需要</td>
+<td style="text-align: left;">✅ GPU 需要</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>最低 GPU</strong></td>
+<td style="text-align: left;">无需 (API)</td>
+<td style="text-align: left;">A10 (24GB) for 2B, A100 (80GB) for 8B</td>
+<td style="text-align: left;">T4 (16GB) for base, A100 for MLLM</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>推理框架</strong></td>
+<td style="text-align: left;">DashScope SDK</td>
+<td style="text-align: left;">vLLM, sentence-transformers</td>
+<td style="text-align: left;">sentence-transformers, transformers</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>部署复杂度</strong></td>
+<td style="text-align: left;">零（API 调用）</td>
+<td style="text-align: left;">中（K8s + GPU）</td>
+<td style="text-align: left;">低（pip install + 下载权重）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>弹性伸缩</strong></td>
+<td style="text-align: left;">自动（阿里云托管）</td>
+<td style="text-align: left;">需配置 HPA</td>
+<td style="text-align: left;">需手动</td>
+</tr>
+</tbody>
+</table>
+<h3 id="embedding_2">成本对比 (每百万张图片 embedding)</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">模型</th>
+<th style="text-align: left;">模式</th>
+<th style="text-align: left;">成本/百万帧</th>
+<th style="text-align: left;">月成本@100万帧</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>tongyi-embedding-vision-plus</strong> (当前)</td>
+<td style="text-align: left;">API</td>
+<td style="text-align: left;">¥0.0005/千token ~¥500</td>
+<td style="text-align: left;">¥500</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Qwen3-VL-Embedding-2B</strong></td>
+<td style="text-align: left;">API</td>
+<td style="text-align: left;">¥0.0018/千token ~¥1,800</td>
+<td style="text-align: left;">¥1,800</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Qwen3-VL-Embedding-2B</strong></td>
+<td style="text-align: left;">自建 (ACK GPU)</td>
+<td style="text-align: left;">GPU实例费 ~¥3,000/月</td>
+<td style="text-align: left;">¥3,000</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>BGE-VL-base</strong></td>
+<td style="text-align: left;">自建 (T4 GPU)</td>
+<td style="text-align: left;">~¥1,500/月</td>
+<td style="text-align: left;">¥1,500</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>BGE-VL-MLLM</strong></td>
+<td style="text-align: left;">自建 (A100 GPU)</td>
+<td style="text-align: left;">~¥15,000/月</td>
+<td style="text-align: left;">¥15,000</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_11">在我们的场景中如何选择？</h3>
+<div class="codehilite"><pre><span></span><code>决策树 (基于我们的实际需求):
+
+需要视频 embedding?
+├─ 是 → Qwen-VL (BGE-VL 不支持视频)
+│   └─ 也需零部署?
+│       ├─ 是 → tongyi-embedding-vision-plus (¥0.0005, 1152-dim)
+│       └─ 否 → Qwen3-VL-Embedding-2B 自建 (2048-dim)
+│
+└─ 否 (仅图片 embedding)
+    ├─ 需零部署 + 低成本?
+    │   └─ tongyi-embedding-vision-plus (¥0.0005, 1152-dim)
+    │
+    ├─ 需极高精度 (组合检索)?
+    │   └─ BGE-VL-base (CIRCO SOTA, 512-dim, MIT, 299MB)
+    │
+    └─ 需平衡精度与成本?
+        ├─ 用 API → Qwen3-VL-Embedding-2B (MMEB 73.4)
+        └─ 自建 → BGE-VL-large (855MB, GPU)
+</code></pre></div>
+
+<h3 id="_12">我们的推荐</h3>
+<div class="codehilite"><pre><span></span><code>Phase 1-2 (验证):     tongyi-embedding-vision-plus (API)
+                      理由: 零部署, 最低成本, 当前正在用
+                      ✓ 1152-dim, ¥0.0005/千token
+                      ✓ 支持图片和视频
+
+Phase 3 (生产, 图片):  考虑 BGE-VL-base (自建)
+                      理由: CIRCO 组合检索 SOTA, 仅 299MB
+                      适合 &quot;图片+文本指令&quot; 场景 (&quot;把背景变暗&quot;)
+
+Phase 3 (生产, 视频):  保持 tongyi-embedding-vision-plus
+                      或升级到 Qwen3-VL-Embedding-2B (API)
+                      理由: BGE-VL 不支持视频, Qwen 是唯一选择
+
+Phase 6 (ego-centric): Qwen3-VL-Embedding-8B (API)
+                      理由: ego 场景复杂图片, 8B 精度最高
+                      成本可控 (¥0.0018/千token)
+</code></pre></div>
+
+<h3 id="_13">迁移路径</h3>
+<div class="codehilite"><pre><span></span><code>当前:   tongyi-embedding-vision-plus (DashScope API, 1152-dim)
+         ↓  代码无需改动, 只换 model 参数
+升级:   qwen3-vl-embedding (DashScope API, 2560-dim)
+         ↓  需重新 inget (新维度不兼容)
+可选:   qwen3-vl-embedding + dimension=1152 (降维兼容现有 collection)
+         ↓  保留现有 DashVector 数据, 只更新 model 字段
+未来:   BGE-VL (自建 GPU, 用于特定组合检索场景)
+</code></pre></div>
+
+<hr />
+<h2 id="_14">生产流式摄入管道</h2>
+<h3 id="_15">设计原则：写入和查询完全解耦</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">关注点</th>
+<th style="text-align: left;">写入路径</th>
+<th style="text-align: left;">查询路径</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">触发方式</td>
+<td style="text-align: left;">OSS Event 异步触发</td>
+<td style="text-align: left;">HTTP Request 同步触发</td>
+</tr>
+<tr>
+<td style="text-align: left;">处理模式</td>
+<td style="text-align: left;">批处理 (batch upsert)</td>
+<td style="text-align: left;">单次请求 (ANN + filter)</td>
+</tr>
+<tr>
+<td style="text-align: left;">伸缩策略</td>
+<td style="text-align: left;">按视频量自动伸缩</td>
+<td style="text-align: left;">按 QPS 自动伸缩</td>
+</tr>
+<tr>
+<td style="text-align: left;">失败处理</td>
+<td style="text-align: left;">MNS 死信队列 + 重试</td>
+<td style="text-align: left;">API Gateway 超时 + fallback</td>
+</tr>
+<tr>
+<td style="text-align: left;">延迟目标</td>
+<td style="text-align: left;">分钟级 (端到端)</td>
+<td style="text-align: left;">毫秒级 (P99 &lt; 500ms)</td>
+</tr>
+<tr>
+<td style="text-align: left;">FC 实例</td>
+<td style="text-align: left;">按需 (cost-optimized)</td>
+<td style="text-align: left;">预留 (latency-optimized)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_16">写入管线：事件驱动 + 批处理</h3>
+<div class="codehilite"><pre><span></span><code>Step 1: OSS ObjectCreated(video.mp4) 事件
+  └─ 触发 FC-1 (FrameExtractor)
+     ├─ 下载视频到本地 /tmp
+     ├─ 自适应抽帧 (activity-based 0.2-2.0 fps)
+     ├─ 帧保存到 OSS frames/{video_id}/
+     └─ 发 MNS 消息: {video_id, frame_list}
+
+Step 2: MNS 消息触发 FC-2 (Embedder) + FC-3 (Captioner)
+  └─ 并行执行 (无依赖)
+     ├─ FC-2: 每帧 base64 → DashScope Embedding API
+     │         batch ≤ 8 帧/请求 (减少 API 调用)
+     │         结果写入 sidecar JSON: {video_id}_embeddings.json
+     │
+     └─ FC-3: 每帧图片 → Qwen-VL (sequential, ~2s/frame)
+               JSON caption 写入 sidecar: {video_id}_captions.json
+
+Step 3: 定时触发器 (every 30s) 启动 FC-4 (Indexer)
+  └─ 扫描 OSS frames/ 中已完成 embed+caption 的帧
+     ├─ 合并 embedding + caption → Doc 列表
+     ├─ 批量 upsert 到 DashVector (50 docs/batch)
+     └─ 标记已处理 (写 done marker 或 move to processed/)
+</code></pre></div>
+
+<h3 id="_17">积压控制</h3>
+<div class="codehilite"><pre><span></span><code>监控指标:
+  raw-videos/ 未处理视频数 &gt; 10 → PagerDuty 告警
+  FC 函数错误率 &gt; 5% → 自动扩容 + 通知
+  DashVector upsert 延迟 &gt; 2s → 降级 (写入 MNS 缓存, 稍后重试)
+
+死信队列 (DLQ):
+  FC-1/2/3 失败 3 次 → 丢入 MNS DLQ
+  → 人工检查: 视频损坏? API 限流? OSS 权限?
+  → 修复后重新投递, 或标记为 skip
+</code></pre></div>
+
+<h3 id="_18">成本控制</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">策略</th>
+<th style="text-align: left;">节省什么</th>
+<th style="text-align: left;">效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>FC 按需计费</strong></td>
+<td style="text-align: left;">无视频时不产生计算费</td>
+<td style="text-align: left;">空闲时 $0/月</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Embedding batch (≤8 图/请求)</strong></td>
+<td style="text-align: left;">API 调用次数</td>
+<td style="text-align: left;">减少 87.5% 调用量</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>自适应抽帧</strong></td>
+<td style="text-align: left;">embedding + caption + 存储</td>
+<td style="text-align: left;">减少 60-80% 帧数</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>FC 预留实例 (仅查询服务)</strong></td>
+<td style="text-align: left;">消除冷启动延迟</td>
+<td style="text-align: left;">~¥30/月/实例</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>OSS 生命周期策略</strong></td>
+<td style="text-align: left;">冷数据存储费</td>
+<td style="text-align: left;">30天→低频, 90天→归档, 降低 70%</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_19">扩展性估算</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">规模</th>
+<th style="text-align: left;">视频/天</th>
+<th style="text-align: left;">帧/天</th>
+<th style="text-align: left;">嵌入成本/天</th>
+<th style="text-align: left;">所需 FC 并发</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">小</td>
+<td style="text-align: left;">10 (10 min ea)</td>
+<td style="text-align: left;">~3,000</td>
+<td style="text-align: left;">~¥3</td>
+<td style="text-align: left;">1-2</td>
+</tr>
+<tr>
+<td style="text-align: left;">中</td>
+<td style="text-align: left;">100</td>
+<td style="text-align: left;">~30,000</td>
+<td style="text-align: left;">~¥30</td>
+<td style="text-align: left;">3-5</td>
+</tr>
+<tr>
+<td style="text-align: left;">大</td>
+<td style="text-align: left;">1,000</td>
+<td style="text-align: left;">~300,000</td>
+<td style="text-align: left;">~¥300</td>
+<td style="text-align: left;">10-20</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_20">查询延迟保证</h2>
+<h3 id="_21">延迟分解</h3>
+<div class="codehilite"><pre><span></span><code>查询请求全链路 (P99):
+
+  API Gateway 路由            ~10ms
+  FC 冷启动 (首次请求)         ~500ms    ← 用预留实例消除
+  FC 热启动 (后续请求)         ~0ms
+  ──────────────────────────────────────
+  DashScope text embedding    ~200ms    ← 新加坡 endpoint
+  DashVector ANN query        ~50ms     ← HNSW 索引 + 新加坡
+  Scalar filter (server-side) ~10ms
+  Array filter (client-side)  ~5ms
+  JSON 序列化 + HTTP 响应      ~10ms
+  ──────────────────────────────────────
+  Total (热启动):             ~275ms
+  Total (冷启动):             ~775ms
+</code></pre></div>
+
+<h3 id="_22">优化手段</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">优化</th>
+<th style="text-align: left;">延迟降低</th>
+<th style="text-align: left;">成本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">FC 预留实例</td>
+<td style="text-align: left;">消 500ms 冷启动</td>
+<td style="text-align: left;">~¥30/月</td>
+</tr>
+<tr>
+<td style="text-align: left;">查询结果缓存 (Redis)</td>
+<td style="text-align: left;">相同 query → 0ms</td>
+<td style="text-align: left;">~¥50/月</td>
+</tr>
+<tr>
+<td style="text-align: left;">换成 tongyi-embedding-vision-flash</td>
+<td style="text-align: left;">embedding 200→100ms</td>
+<td style="text-align: left;">更便宜</td>
+</tr>
+<tr>
+<td style="text-align: left;">DashVector 更高规格实例</td>
+<td style="text-align: left;">检索 50→30ms</td>
+<td style="text-align: left;">~¥50/月额外</td>
+</tr>
+<tr>
+<td style="text-align: left;">CDN 边缘部署</td>
+<td style="text-align: left;">网络延迟 ~50→5ms</td>
+<td style="text-align: left;">~¥100/月</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_23">缓存策略</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Redis 缓存高频查询</span>
+<span class="nd">@cache</span><span class="p">(</span><span class="n">ttl</span><span class="o">=</span><span class="mi">300</span><span class="p">)</span>  <span class="c1"># 5分钟</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">cached_search</span><span class="p">(</span><span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">top_k</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">retriever</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">top_k</span><span class="o">=</span><span class="n">top_k</span><span class="p">)</span>
+
+<span class="c1"># 缓存 key = hash(query + filters)</span>
+<span class="c1"># 缓存 value = [frame_id, score, metadata] (消息pack压缩)</span>
+<span class="c1"># 命中率估计: 高频查询 (60% of traffic) → 80% hit rate</span>
+</code></pre></div>
+
+<h3 id="_24">降级策略</h3>
+<div class="codehilite"><pre><span></span><code>正常路径:
+  query → embedding → DashVector → top-k → 返回
+
+降级 1 (DashVector 超时 &gt; 2s):
+  返回 Redis 缓存结果 (可能过期)
+
+降级 2 (DashScope API 限流):
+  返回 &quot;service busy&quot; + HTTP 503
+  + 自动重试 3 次 (exponential backoff)
+
+降级 3 (无结果):
+  返回空结果 + 建议更换关键词
+  记录到 SLS → 分析高频无结果 query → 反馈给 caption prompt 优化
+</code></pre></div>
+
+<hr />
+<h2 id="_25">目录</h2>
+<ol>
+<li><a href="#系统架构总览">系统架构总览</a></li>
+<li><a href="#生产环境流式摄入--查询分离">生产环境：流式摄入 + 查询分离</a></li>
+<li><a href="#开发环境本地验证管线">开发环境：本地验证管线</a></li>
+<li><a href="#embedding-原理详解">Embedding 原理详解</a></li>
+<li><a href="#向量数据库原理">向量数据库原理</a></li>
+<li><a href="#生产流式摄入管道">生产流式摄入管道</a></li>
+<li><a href="#查询延迟保证">查询延迟保证</a></li>
+<li><a href="#qwen-vl-vs-bge-vl-模型对比">Qwen-VL vs BGE-VL 模型对比</a></li>
+<li><a href="#1-总体迁移路线">总体迁移路线</a></li>
+<li><a href="#2-抽帧策略适配">抽帧策略适配</a></li>
+<li><a href="#3-schema-适配与字段填充">Schema 适配与字段填充</a></li>
+<li><a href="#4-检索-query-模式变化">检索 Query 模式变化</a></li>
+<li><a href="#5-av-车队数据-vs-ego-数据的异同">AV 车队数据 vs Ego 数据的异同</a></li>
+<li><a href="#6-实施优先级矩阵">实施优先级矩阵</a></li>
+</ol>
+<hr />
+<h2 id="1">1. 总体迁移路线</h2>
+<div class="codehilite"><pre><span></span><code>当前 (EPIC-KITCHENS 验证)                     目标 (Ego-Centric Fleet)
+┌──────────────────────────┐                ┌──────────────────────────────┐
+│  短视频 (1-2 min)        │    ──────▶     │  长视频 (数小时)              │
+│  固定间隔抽帧 (0.5fps)   │    ──────▶     │  自适应抽帧 (activity-based) │
+│  人工标注 narration      │    ──────▶     │  Qwen-VL 自动标注 + 少样本人工│
+│  语义检索 (single-hop)   │    ──────▶     │  时序-语义检索 (multi-hop)     │
+│  评测: gt_narration 匹配 │    ──────▶     │  评测: 事件级 recall + 时间精度│
+└──────────────────────────┘                └──────────────────────────────┘
+
+核心不变组件:
+  ✓ 多模态 embedding (tongyi-embedding-vision-plus → 1152-dim 独立向量)
+  ✓ Qwen-VL 结构化 caption (JSON: objects/actions/lighting/occlusion/is_anomaly)
+  ✓ DashVector 向量库 + 标量字段过滤
+  ✓ Python + DashScope SDK 技术栈
+
+需新增组件:
+  + 活动检测器 (activity detector, 控制抽帧密度)
+  + 时序索引 (time-range queries, 事件片段检索)
+  + Proprioception 对齐层 (IMU/odometry → timestamp mapping)
+  + 少样本人工标注管线 (active learning loop)
+</code></pre></div>
+
+<hr />
+<h2 id="2">2. 抽帧策略适配</h2>
+<h3 id="21">2.1 从固定间隔到自适应</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: left;">EPIC 阶段 (当前)</th>
+<th style="text-align: left;">Ego-Centric 阶段 (目标)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">视频时长</td>
+<td style="text-align: left;">1-2 分钟</td>
+<td style="text-align: left;">数十分钟到数小时</td>
+</tr>
+<tr>
+<td style="text-align: left;">帧率</td>
+<td style="text-align: left;">0.5 fps 固定</td>
+<td style="text-align: left;">0.2–2.0 fps 自适应</td>
+</tr>
+<tr>
+<td style="text-align: left;">场景变化</td>
+<td style="text-align: left;">中（厨房操作）</td>
+<td style="text-align: left;">高（走动 + 头部转动 + 操作）</td>
+</tr>
+<tr>
+<td style="text-align: left;">冗余度</td>
+<td style="text-align: left;">低</td>
+<td style="text-align: left;">极高（长时间静态场景）</td>
+</tr>
+<tr>
+<td style="text-align: left;">实现</td>
+<td style="text-align: left;">OSS 截帧 / OpenCV</td>
+<td style="text-align: left;">FC + 活动检测 + 关键帧提取</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22">2.2 推荐策略：三层自适应采样</h3>
+<div class="codehilite"><pre><span></span><code>Layer 1: 活动检测 (Motion Activity Detector)
+  ├─ 输入: 连续帧差 + 光流幅度
+  ├─ 输出: activity_score ∈ [0, 1]
+  └─ 阈值: score &gt; 0.1 → &quot;活动段&quot;,  else → &quot;静止段&quot;
+
+Layer 2: 动态抽帧密度
+  ├─ 活动段: 1.0–2.0 fps (密集采样，捕捉操作细节)
+  ├─ 静止段: 0.1–0.2 fps (稀疏采样，保留场景上下文)
+  └─ 过渡段: 0.5 fps (标准采样)
+
+Layer 3: 手-物交互检测 (Hand-Object Interaction, Phase 5d)
+  ├─ 输入: Qwen-VL caption 中检测到 hand + object 共现
+  ├─ 触发: 提升该段抽帧密度至 3.0+ fps
+  └─ 目的: 为后续细粒度 failure case 分析保留足够帧
+</code></pre></div>
+
+<p><strong>实现方案</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 伪代码：自适应抽帧控制器</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">adaptive_sampling</span><span class="p">(</span><span class="n">video_path</span><span class="p">,</span> <span class="n">activity_threshold</span><span class="o">=</span><span class="mf">0.1</span><span class="p">):</span>
+    <span class="n">cap</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">VideoCapture</span><span class="p">(</span><span class="n">video_path</span><span class="p">)</span>
+    <span class="n">prev_frame</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">for</span> <span class="n">frame_idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">total_frames</span><span class="p">):</span>
+        <span class="n">ret</span><span class="p">,</span> <span class="n">frame</span> <span class="o">=</span> <span class="n">cap</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">prev_frame</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># 简单活动检测: 帧间差值</span>
+            <span class="n">diff</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">absdiff</span><span class="p">(</span><span class="n">frame</span><span class="p">,</span> <span class="n">prev_frame</span><span class="p">)</span>
+            <span class="n">activity</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">diff</span><span class="p">)</span> <span class="o">/</span> <span class="mf">255.0</span>
+
+            <span class="k">if</span> <span class="n">activity</span> <span class="o">&gt;</span> <span class="n">activity_threshold</span><span class="p">:</span>
+                <span class="n">fps</span> <span class="o">=</span> <span class="mf">2.0</span>       <span class="c1"># 活动段</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">fps</span> <span class="o">=</span> <span class="mf">0.2</span>       <span class="c1"># 静止段</span>
+
+            <span class="n">interval</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">src_fps</span> <span class="o">/</span> <span class="n">fps</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">frame_idx</span> <span class="o">%</span> <span class="n">interval</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="n">frame</span><span class="p">,</span> <span class="n">activity</span><span class="p">,</span> <span class="n">frame_idx</span>
+
+        <span class="n">prev_frame</span> <span class="o">=</span> <span class="n">frame</span>
+</code></pre></div>
+
+<p><strong>Rationale</strong>：固定间隔对长视频不经济 — 99% 的帧是冗余的。活动检测用简单的帧差法（无需 GPU），保证实时性；密度分三层，在精度和成本之间做 trade-off。</p>
+<h3 id="23">2.3 成本估算对比</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">策略</th>
+<th style="text-align: left;">帧数 / 1h 视频</th>
+<th style="text-align: left;">Embedding 成本</th>
+<th style="text-align: left;">适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">固定 0.5fps</td>
+<td style="text-align: left;">1,800</td>
+<td style="text-align: left;">~¥1</td>
+<td style="text-align: left;">验证</td>
+</tr>
+<tr>
+<td style="text-align: left;">固定 2.0fps</td>
+<td style="text-align: left;">7,200</td>
+<td style="text-align: left;">~¥4</td>
+<td style="text-align: left;">不考虑</td>
+</tr>
+<tr>
+<td style="text-align: left;">自适应 0.2–2.0fps</td>
+<td style="text-align: left;">~1,500–3,000</td>
+<td style="text-align: left;">~¥1–2</td>
+<td style="text-align: left;"><strong>生产推荐</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">自适应 + 手物检测</td>
+<td style="text-align: left;">~2,000–4,000</td>
+<td style="text-align: left;">~¥2–3</td>
+<td style="text-align: left;">失败案例挖掘</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3-schema">3. Schema 适配与字段填充</h2>
+<h3 id="31-schema">3.1 当前 Schema 回顾</h3>
+<p>我们的 schema 已预留在 6 个 ego-centric 字段（创建于 Phase 1，当前为空或占位值）：</p>
+<div class="codehilite"><pre><span></span><code><span class="s2">&quot;episode_id&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>           <span class="c1"># 当前: participant_id (P01) / 空</span>
+<span class="s2">&quot;action_label&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>         <span class="c1"># 当前: gt_verb (EPIC 标注) / &quot;&quot;</span>
+<span class="s2">&quot;proprioception_ts&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>  <span class="c1"># 当前: 0.0</span>
+<span class="s2">&quot;view_type&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>            <span class="c1"># 当前: &quot;ego&quot; (固定)</span>
+<span class="s2">&quot;objects&quot;</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>        <span class="c1"># 当前: Qwen-VL 生成</span>
+<span class="s2">&quot;actions&quot;</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>        <span class="c1"># 当前: Qwen-VL 生成</span>
+</code></pre></div>
+
+<h3 id="32-ego-centric">3.2 Ego-Centric 字段填充方案</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">字段</th>
+<th style="text-align: left;">EPIC 阶段</th>
+<th style="text-align: left;">Ego-Centric 阶段</th>
+<th style="text-align: left;">填充方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>episode_id</code></td>
+<td style="text-align: left;"><code>P01</code> (participant)</td>
+<td style="text-align: left;"><code>mission_2026_001</code> 或 AVIN</td>
+<td style="text-align: left;">采集时写入：唯一标识每次采集任务</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>action_label</code></td>
+<td style="text-align: left;"><code>take</code>, <code>open</code>, ... (EPIC gt_verb)</td>
+<td style="text-align: left;"><code>grasping_cup</code>, <code>opening_door</code></td>
+<td style="text-align: left;"><strong>Qwen-VL 生成</strong>：扩展 prompt 增加动作分类，同时人工标注少量样本做校准</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>proprioception_ts</code></td>
+<td style="text-align: left;"><code>0.0</code> (无数据)</td>
+<td style="text-align: left;"><code>1234567890.123</code></td>
+<td style="text-align: left;">采集时写入：cam_ts ↔ imu_ts ↔ odom_ts 对齐表</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>view_type</code></td>
+<td style="text-align: left;"><code>"ego"</code> (固定)</td>
+<td style="text-align: left;"><code>"ego"</code></td>
+<td style="text-align: left;">固定</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>objects</code></td>
+<td style="text-align: left;">Qwen-VL 生成</td>
+<td style="text-align: left;">Qwen-VL 生成</td>
+<td style="text-align: left;">无变化</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>actions</code></td>
+<td style="text-align: left;">Qwen-VL 生成</td>
+<td style="text-align: left;">Qwen-VL 生成</td>
+<td style="text-align: left;">prompt 优化：增加 ego-centric action vocabulary</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33">3.3 建议新增字段</h3>
+<p>基于 ego-centric 场景的实际需求，建议增加：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># --- 新增: Ego-Centric 专属字段 ---</span>
+<span class="s2">&quot;activity_score&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>      <span class="c1"># 活动检测分数 [0,1]，用于检索时过滤高活动帧</span>
+<span class="s2">&quot;camera_pose_x&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>       <span class="c1"># 相机/头部位置 X (需 proprioception 数据)</span>
+<span class="s2">&quot;camera_pose_y&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>       <span class="c1"># 相机/头部位置 Y</span>
+<span class="s2">&quot;hand_present&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>         <span class="c1"># Qwen-VL 检测到手部存在</span>
+<span class="s2">&quot;interaction_intensity&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="c1"># &quot;none&quot; | &quot;touch&quot; | &quot;grasp&quot; | &quot;manipulate&quot; (Qwen-VL 生成)</span>
+<span class="s2">&quot;gaze_target&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>           <span class="c1"># 注视目标物体 (Qwen-VL 生成，如 &quot;cup&quot;, &quot;door_handle&quot;)</span>
+</code></pre></div>
+
+<p><strong>Rationale</strong>：<br />
+- <code>activity_score</code> 和 <code>hand_present</code> 用于快速过滤：只检索"人在操作"的帧，排除大量静止/行走帧<br />
+- <code>camera_pose_*</code> 支持空间查询："在厨房水槽附近的所有帧"<br />
+- <code>interaction_intensity</code> 对失败案例挖掘关键：区分"看着物体"和"正在操作物体"</p>
+<h3 id="34-proprioception">3.4 Proprioception 对齐设计</h3>
+<div class="codehilite"><pre><span></span><code><span class="nl">采集数据流</span><span class="p">:</span>
+<span class="w">  </span><span class="n">camera</span><span class="p">.</span><span class="n">mp4</span><span class="w"> </span><span class="err">──┬──</span><span class="w"> </span><span class="n">frame_idx</span><span class="p">,</span><span class="w"> </span><span class="n">camera_ts</span>
+<span class="w">               </span><span class="err">│</span><span class="w">          </span><span class="err">│</span>
+<span class="w">  </span><span class="n">imu</span><span class="p">.</span><span class="n">csv</span><span class="w"> </span><span class="err">─────┤</span><span class="w">          </span><span class="err">├──</span><span class="w"> </span><span class="n">alignment_table</span><span class="w"> </span><span class="err">{</span><span class="n">camera_ts</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">imu_ts</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">odom_ts</span><span class="err">}</span>
+<span class="w">               </span><span class="err">│</span><span class="w">          </span><span class="err">│</span>
+<span class="w">  </span><span class="n">odom</span><span class="p">.</span><span class="n">csv</span><span class="w"> </span><span class="err">────┘</span><span class="w">          </span><span class="err">│</span>
+<span class="w">                          </span><span class="err">▼</span>
+<span class="w">                    </span><span class="n">ingestion</span><span class="w"> </span><span class="nl">时合并</span><span class="p">:</span>
+<span class="w">                    </span><span class="n">proprioception_ts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">alignment_table</span><span class="p">.</span><span class="n">lookup</span><span class="p">(</span><span class="n">camera_ts</span><span class="p">)</span>
+<span class="w">                    </span><span class="n">camera_pose_</span><span class="o">*</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="n">odom_data</span><span class="o">[</span><span class="n">camera_ts</span><span class="o">]</span><span class="p">.</span><span class="n">pose</span>
+
+<span class="n">DashVector</span><span class="w"> </span><span class="nl">检索时</span><span class="p">:</span>
+<span class="w">  </span><span class="ss">&quot;找我在厨房操作时靠近水槽的所有帧&quot;</span>
+<span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="n">spatial</span><span class="w"> </span><span class="k">filter</span><span class="err">:</span><span class="w"> </span><span class="n">camera_pose</span><span class="w"> </span><span class="n">near</span><span class="w"> </span><span class="p">(</span><span class="n">x0</span><span class="p">,</span><span class="w"> </span><span class="n">y0</span><span class="p">)</span><span class="w"> </span><span class="n">radius</span><span class="w"> </span><span class="mi">2</span><span class="n">m</span>
+<span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="n">temporal</span><span class="w"> </span><span class="k">filter</span><span class="err">:</span><span class="w"> </span><span class="mi">2026</span><span class="o">-</span><span class="mi">06</span><span class="o">-</span><span class="mi">18</span><span class="w"> </span><span class="mi">10</span><span class="err">:</span><span class="mi">00</span><span class="err">–</span><span class="mi">10</span><span class="err">:</span><span class="mi">30</span>
+<span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="n">activity</span><span class="w"> </span><span class="k">filter</span><span class="err">:</span><span class="w"> </span><span class="n">activity_score</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mf">0.3</span>
+</code></pre></div>
+
+<hr />
+<h2 id="4-query">4. 检索 Query 模式变化</h2>
+<h3 id="41">4.1 查询类型演进</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">查询类型</th>
+<th style="text-align: left;">示例 (EPIC 阶段)</th>
+<th style="text-align: left;">示例 (Ego-Centric 阶段)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>语义单跳</strong></td>
+<td style="text-align: left;">"take cup from cupboard"</td>
+<td style="text-align: left;">"拿杯子"</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>语义 + 时间</strong></td>
+<td style="text-align: left;">不支持</td>
+<td style="text-align: left;">"厨房操作前 30 秒的帧"</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>语义 + 空间</strong></td>
+<td style="text-align: left;">不支持</td>
+<td style="text-align: left;">"在水槽附近的操作帧"</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>时序因果</strong></td>
+<td style="text-align: left;">不支持</td>
+<td style="text-align: left;">"拿杯子 → 杯掉落地面的时间范围内的帧"</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>失败案例</strong></td>
+<td style="text-align: left;">"is_anomaly=true"</td>
+<td style="text-align: left;">"物体掉落 + 操作中断 + 重复拾取"</td>
+</tr>
+</tbody>
+</table>
+<h3 id="42">4.2 检索架构升级</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">当前</span><span class="w"> </span><span class="p">(</span><span class="n">Milestone</span><span class="w"> </span><span class="mi">4</span><span class="p">)</span><span class="err">:</span>
+<span class="w">  </span><span class="nb">text</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">embedding</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">DashVector</span><span class="w"> </span><span class="n">ANN</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">top</span><span class="o">-</span><span class="n">k</span><span class="w"> </span><span class="err">帧</span>
+
+<span class="n">Ego</span><span class="o">-</span><span class="n">Centric</span><span class="w"> </span><span class="p">(</span><span class="n">Phase</span><span class="w"> </span><span class="mi">6</span><span class="p">)</span><span class="err">:</span>
+<span class="w">  </span><span class="nb">text</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">embedding</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">DashVector</span><span class="w"> </span><span class="n">ANN</span>
+<span class="w">     </span><span class="err">│</span><span class="w">                           </span><span class="err">│</span>
+<span class="w">     </span><span class="err">├─</span><span class="w"> </span><span class="n">temporal</span><span class="w"> </span><span class="k">filter</span><span class="w"> </span><span class="err">─────────┤</span><span class="w"> </span><span class="p">(</span><span class="n">timestamp</span><span class="w"> </span><span class="k">range</span><span class="p">)</span>
+<span class="w">     </span><span class="err">├─</span><span class="w"> </span><span class="n">spatial</span><span class="w"> </span><span class="k">filter</span><span class="w"> </span><span class="err">──────────┤</span><span class="w"> </span><span class="p">(</span><span class="n">camera_pose</span><span class="w"> </span><span class="n">proximity</span><span class="p">)</span>
+<span class="w">     </span><span class="err">├─</span><span class="w"> </span><span class="n">activity</span><span class="w"> </span><span class="k">filter</span><span class="w"> </span><span class="err">─────────┤</span><span class="w"> </span><span class="p">(</span><span class="n">activity_score</span><span class="w"> </span><span class="k">threshold</span><span class="p">)</span>
+<span class="w">     </span><span class="err">└─</span><span class="w"> </span><span class="n">interaction</span><span class="w"> </span><span class="k">filter</span><span class="w"> </span><span class="err">──────┘</span><span class="w"> </span><span class="p">(</span><span class="n">hand_present</span><span class="p">,</span><span class="w"> </span><span class="n">interaction_intensity</span><span class="p">)</span>
+<span class="w">              </span><span class="err">│</span>
+<span class="w">              </span><span class="err">▼</span>
+<span class="w">         </span><span class="n">top</span><span class="o">-</span><span class="n">k</span><span class="w"> </span><span class="err">帧</span>
+<span class="w">              </span><span class="err">│</span>
+<span class="w">         </span><span class="n">temporal</span><span class="w"> </span><span class="n">grouping</span><span class="w"> </span><span class="p">(</span><span class="err">合并相邻帧为事件片段</span><span class="p">)</span>
+<span class="w">              </span><span class="err">│</span>
+<span class="w">              </span><span class="err">▼</span>
+<span class="w">         </span><span class="n">event</span><span class="w"> </span><span class="n">segments</span><span class="err">:</span><span class="w"> </span><span class="p">[(</span><span class="n">start_ts</span><span class="p">,</span><span class="w"> </span><span class="n">end_ts</span><span class="p">,</span><span class="w"> </span><span class="n">summary</span><span class="p">)]</span>
+</code></pre></div>
+
+<h3 id="43-query">4.3 失败案例挖掘的 Query 模式</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">Pattern</span><span class="w"> </span><span class="mi">1</span><span class="err">:</span><span class="w"> </span><span class="s2">&quot;异常检测&quot;</span>
+<span class="w">  </span><span class="n">query</span><span class="err">:</span><span class="w"> </span><span class="s2">&quot;is_anomaly = true&quot;</span>
+<span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="err">检索</span><span class="w"> </span><span class="n">Qwen</span><span class="o">-</span><span class="n">VL</span><span class="w"> </span><span class="err">标注为异常的帧</span>
+<span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="err">按</span><span class="w"> </span><span class="n">episode</span><span class="w"> </span><span class="err">聚合</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">识别异常场景</span>
+
+<span class="n">Pattern</span><span class="w"> </span><span class="mi">2</span><span class="err">:</span><span class="w"> </span><span class="s2">&quot;失败事件链&quot;</span>
+<span class="w">  </span><span class="n">step</span><span class="w"> </span><span class="mi">1</span><span class="err">:</span><span class="w"> </span><span class="err">检索</span><span class="w"> </span><span class="s2">&quot;物体掉落&quot;</span><span class="w"> </span><span class="err">帧</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">找到</span><span class="w"> </span><span class="n">drop_time</span>
+<span class="w">  </span><span class="n">step</span><span class="w"> </span><span class="mi">2</span><span class="err">:</span><span class="w"> </span><span class="err">检索</span><span class="w"> </span><span class="p">[</span><span class="n">drop_time</span><span class="o">-</span><span class="mi">30</span><span class="n">s</span><span class="p">,</span><span class="w"> </span><span class="n">drop_time</span><span class="o">-</span><span class="mi">1</span><span class="n">s</span><span class="p">]</span><span class="w"> </span><span class="err">的高活动帧</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">找到操作前兆</span>
+<span class="w">  </span><span class="n">step</span><span class="w"> </span><span class="mi">3</span><span class="err">:</span><span class="w"> </span><span class="err">检索</span><span class="w"> </span><span class="p">[</span><span class="n">drop_time</span><span class="o">+</span><span class="mi">1</span><span class="n">s</span><span class="p">,</span><span class="w"> </span><span class="n">drop_time</span><span class="o">+</span><span class="mi">10</span><span class="n">s</span><span class="p">]</span><span class="w"> </span><span class="err">的帧</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">找到恢复行为</span>
+
+<span class="n">Pattern</span><span class="w"> </span><span class="mi">3</span><span class="err">:</span><span class="w"> </span><span class="s2">&quot;重复操作&quot;</span><span class="w"> </span><span class="p">(</span><span class="n">retry</span><span class="w"> </span><span class="n">loop</span><span class="w"> </span><span class="n">indicator</span><span class="p">)</span>
+<span class="w">  </span><span class="n">step</span><span class="w"> </span><span class="mi">1</span><span class="err">:</span><span class="w"> </span><span class="err">检索所有</span><span class="w"> </span><span class="s2">&quot;take X&quot;</span><span class="w"> </span><span class="err">帧</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">按时间排序</span>
+<span class="w">  </span><span class="n">step</span><span class="w"> </span><span class="mi">2</span><span class="err">:</span><span class="w"> </span><span class="err">检测同一物体在短时间内被重复</span><span class="w"> </span><span class="n">take</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">flag</span><span class="w"> </span><span class="err">为候选失败案例</span>
+
+<span class="n">Pattern</span><span class="w"> </span><span class="mi">4</span><span class="err">:</span><span class="w"> </span><span class="s2">&quot;空间-时间热点&quot;</span>
+<span class="w">  </span><span class="n">query</span><span class="err">:</span><span class="w"> </span><span class="n">camera_pose</span><span class="w"> </span><span class="n">near</span><span class="w"> </span><span class="p">[</span><span class="n">X</span><span class="p">,</span><span class="n">Y</span><span class="p">]</span><span class="w"> </span><span class="n">AND</span><span class="w"> </span><span class="n">activity_score</span><span class="w"> </span><span class="p">&gt;</span><span class="w"> </span><span class="mf">0.5</span>
+<span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="err">找到高失败率的空间区域</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">机器人</span><span class="o">/</span><span class="err">人因工程设计反馈</span>
+</code></pre></div>
+
+<hr />
+<h2 id="5-av-vs-ego">5. AV 车队数据 vs Ego 数据的异同</h2>
+<h3 id="51">5.1 对比总览</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: left;">EPIC-KITCHENS (当前验证)</th>
+<th style="text-align: left;">AV 车队数据 (目标)</th>
+<th style="text-align: left;">差异影响</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>视角</strong></td>
+<td style="text-align: left;">第一人称（头戴）</td>
+<td style="text-align: left;">第一人称（头戴/胸戴/车内）</td>
+<td style="text-align: left;">低 — schema 已预留 <code>view_type="ego"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>场景</strong></td>
+<td style="text-align: left;">单一厨房</td>
+<td style="text-align: left;">多样化（仓库/产线/道路/家庭）</td>
+<td style="text-align: left;">中 — 需扩展 Qwen-VL prompt 覆盖更多 domain</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>视频时长</strong></td>
+<td style="text-align: left;">1-2 分钟</td>
+<td style="text-align: left;">数小时（continuous recording）</td>
+<td style="text-align: left;"><strong>高</strong> — 自适应抽帧是关键</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>标注</strong></td>
+<td style="text-align: left;">全量人工标注（verb/noun/narration）</td>
+<td style="text-align: left;">极少/无人工标注</td>
+<td style="text-align: left;"><strong>高</strong> — 必须依赖 Qwen-VL 自动标注</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>动作多样性</strong></td>
+<td style="text-align: left;">97 verbs × 300 nouns (受控)</td>
+<td style="text-align: left;">开放词汇 (unbounded)</td>
+<td style="text-align: left;">中 — 需扩展 caption prompt 的 actions vocabulary</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>环境光</strong></td>
+<td style="text-align: left;">室内可控光</td>
+<td style="text-align: left;">室内/室外/夜间</td>
+<td style="text-align: left;">中 — <code>lighting</code> 字段已有，但 Qwen-VL 在极端光照下准确度未知</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>遮挡</strong></td>
+<td style="text-align: left;">中（手遮挡常见）</td>
+<td style="text-align: left;">中-高（车体/货架/人群）</td>
+<td style="text-align: left;">中 — <code>occlusion</code> 字段已有</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>运动模式</strong></td>
+<td style="text-align: left;">头部运动为主</td>
+<td style="text-align: left;">行走 + 头部 + 车辆/机器人</td>
+<td style="text-align: left;">高 — 需 activity_score 区分</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>相机参数</strong></td>
+<td style="text-align: left;">固定 1080p/60fps</td>
+<td style="text-align: left;">可变分辨率/帧率</td>
+<td style="text-align: left;">中 — 抽帧模块需适配动态源帧率</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Proprioception</strong></td>
+<td style="text-align: left;">无</td>
+<td style="text-align: left;">IMU + Odometry + 控制指令</td>
+<td style="text-align: left;"><strong>新增</strong> — 需设计对齐层</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Post-hoc 分析</strong></td>
+<td style="text-align: left;">可 (已标注)</td>
+<td style="text-align: left;">必须 — 用于失败根因分析</td>
+<td style="text-align: left;">架构要求支持时序回溯</td>
+</tr>
+</tbody>
+</table>
+<h3 id="52-epic-fleet">5.2 EPIC → Fleet 迁移清单</h3>
+<div class="codehilite"><pre><span></span><code>不变的部分:
+  ✅ embedding pipeline (base64 → DashScope → 1152-dim vector)
+  ✅ Qwen-VL structured caption (prompt 微调后复用)
+  ✅ DashVector schema (核心字段不变，只新增 ego 字段)
+  ✅ DashVector query + filter paradigm
+  ✅ Python + DashScope SDK 技术栈
+
+需改/新增的部分:
+  🔧 自适应抽帧控制器 (activity detection + dynamic fps)
+  🔧 Qwen-VL prompt: 增加 ego-centric action vocabulary、domain 场景描述词
+  🔧 Proprioception 对齐层 (timestamp mapping table)
+  🔧 时序检索接口 (time range + event grouping)
+  🔧 少样本人工标注管线 (active learning: 模型标注 → 人工复核 → 反馈)
+  🔧 失败案例自动标识 (anomaly scoring heuristic: repetition + duration + object-loss)
+</code></pre></div>
+
+<h3 id="53">5.3 关键技术风险</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">风险</th>
+<th style="text-align: left;">影响</th>
+<th style="text-align: left;">缓解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Qwen-VL 在极端光照/遮挡下 caption 准确度低</td>
+<td style="text-align: left;">检索召回率下降</td>
+<td style="text-align: left;">多帧融合 (相邻帧的 caption 投票)、增加 uncertainty 字段</td>
+</tr>
+<tr>
+<td style="text-align: left;">长视频 embedding + caption 成本过高</td>
+<td style="text-align: left;">月成本爆炸</td>
+<td style="text-align: left;">自适应抽帧 + 分级存储 (活动段全量、静止段采样)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Proprioception 数据时间戳不精确</td>
+<td style="text-align: left;">空间查询失败</td>
+<td style="text-align: left;">时间戳同步误差容忍 ±50ms、使用 NTP 校准</td>
+</tr>
+<tr>
+<td style="text-align: left;">开放词汇动作识别难</td>
+<td style="text-align: left;">检索 queries 找不到对应帧</td>
+<td style="text-align: left;">建立 ego-centric action taxonomy、结合 CLIP 等开放词汇模型辅助</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="6">6. 实施优先级矩阵</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">优先级</th>
+<th style="text-align: left;">模块</th>
+<th style="text-align: left;">理由</th>
+<th style="text-align: left;">依赖</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>P0</strong></td>
+<td style="text-align: left;">自适应抽帧 (activity detection)</td>
+<td style="text-align: left;">不解决就无法规模化</td>
+<td style="text-align: left;">无</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>P0</strong></td>
+<td style="text-align: left;">Qwen-VL prompt 扩展 (ego domain)</td>
+<td style="text-align: left;">提升自动标注准确率</td>
+<td style="text-align: left;">少量 ego 样本数据</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>P1</strong></td>
+<td style="text-align: left;">时序检索接口</td>
+<td style="text-align: left;">核心需求: "什么时候发生的"</td>
+<td style="text-align: left;">P0 完成</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>P1</strong></td>
+<td style="text-align: left;">Proprioception 对齐层</td>
+<td style="text-align: left;">空间查询的基础</td>
+<td style="text-align: left;">采集端提供 IMU/odom 数据</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>P1</strong></td>
+<td style="text-align: left;">失败案例自动标识</td>
+<td style="text-align: left;">核心业务价值</td>
+<td style="text-align: left;">P0 + 少量 labeled 失败案例</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>P2</strong></td>
+<td style="text-align: left;">空间查询 (camera_pose filter)</td>
+<td style="text-align: left;">导航/路径分析</td>
+<td style="text-align: left;">P1 proprioception</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>P2</strong></td>
+<td style="text-align: left;">少样本人工标注管线</td>
+<td style="text-align: left;">持续提升模型准确率</td>
+<td style="text-align: left;">P0 完成</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>P3</strong></td>
+<td style="text-align: left;">事件链分析 (causal multi-hop)</td>
+<td style="text-align: left;">高级分析能力</td>
+<td style="text-align: left;">P1 时序检索完成</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_26">附录: 与当前代码库的对应关系</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">模块</th>
+<th style="text-align: left;">当前实现</th>
+<th style="text-align: left;">Ego 需改的文件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">抽帧</td>
+<td style="text-align: left;"><code>pipeline/frame_extractor.py</code></td>
+<td style="text-align: left;">新增 <code>AdaptiveFrameExtractor</code> 类</td>
+</tr>
+<tr>
+<td style="text-align: left;">Schema</td>
+<td style="text-align: left;"><code>schema.py</code> (FIELDS_SCHEMA)</td>
+<td style="text-align: left;">新增 6 个 ego 字段</td>
+</tr>
+<tr>
+<td style="text-align: left;">Caption</td>
+<td style="text-align: left;"><code>pipeline/captions.py</code></td>
+<td style="text-align: left;">扩展 <code>CAPTION_PROMPT</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">检索</td>
+<td style="text-align: left;"><code>pipeline/retriever.py</code></td>
+<td style="text-align: left;">新增 <code>search_temporal()</code> 方法</td>
+</tr>
+<tr>
+<td style="text-align: left;">Filter</td>
+<td style="text-align: left;"><code>pipeline/filter_builder.py</code></td>
+<td style="text-align: left;">新增 activity/camera_pose 过滤条件</td>
+</tr>
+<tr>
+<td style="text-align: left;">入</td>
+<td style="text-align: left;"><code>scripts/ingest_epic.py</code></td>
+<td style="text-align: left;">新增 episod_id 生成 + proprioception 对齐</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>

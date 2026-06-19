@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Embodied-AI 模型训练白皮书</title>
+  
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --text-muted: #8b949e; --accent: #58a6ff;
+    --accent-alt: #79c0ff; --green: #3fb950; --orange: #d2991d;
+    --red: #f85149; --purple: #a371f7; --code-bg: #1c2128;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.7;
+    max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem 4rem;
+  }
+  h1 { font-size: 2rem; border-bottom: 2px solid var(--border); padding-bottom: 0.6rem; margin: 2rem 0 1rem; color: #f0f6fc; }
+  h2 { font-size: 1.45rem; margin: 2.2rem 0 0.8rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); color: var(--accent-alt); }
+  h3 { font-size: 1.15rem; margin: 1.5rem 0 0.5rem; color: #e6edf3; }
+  p { margin: 0.7rem 0; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  blockquote { border-left: 3px solid var(--accent); padding: 0.5rem 1rem; margin: 1rem 0; background: var(--surface); border-radius: 0 4px 4px 0; color: var(--text-muted); }
+  code { font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace; background: var(--code-bg); padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.9em; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.2rem; overflow-x: auto; margin: 0.8rem 0; font-size: 0.85em; line-height: 1.6; }
+  pre code { background: none; padding: 0; border-radius: 0; line-height: 1.6; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.92em; }
+  th, td { border: 1px solid var(--border); padding: 0.55rem 0.8rem; text-align: left; }
+  th { background: var(--surface); font-weight: 600; color: #f0f6fc; }
+  tr:hover td { background: rgba(88, 166, 255, 0.04); }
+  td:first-child, th:first-child { white-space: nowrap; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+  ul, ol { padding-left: 1.8rem; margin: 0.5rem 0; }
+  li { margin: 0.25rem 0; }
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1.5rem; margin: 1.5rem 0; }
+  .toc a { color: var(--accent-alt); }
+  @media print {
+    body { background: white; color: black; max-width: none; }
+    :root { --bg: white; --surface: #f6f8fa; --border: #d0d7de; --text: #24292f; --text-muted: #57606a; --code-bg: #f6f8fa; --accent: #0969da; --accent-alt: #0550ae; }
+  }
+  @media (max-width: 768px) {
+    body { padding: 1rem 0.8rem 2rem; }
+    pre { font-size: 0.78em; padding: 0.7rem; }
+    table { font-size: 0.82em; }
+    th, td { padding: 0.35rem 0.5rem; }
+  }
+</style>
+
+</head>
+<body>
+  <h1 id="embodied-ai">Embodied-AI 模型训练白皮书</h1>
+<blockquote>
+<p>本文档基于 <a href="milestone6_egocentric_design.html">RAG 视频检索系统技术设计文档</a> 中构建的数据管道，分析其对具身智能模型训练的支撑能力。<br />
+数据管道产出物：per-frame 视觉 embedding (1152-dim) + 结构化场景描述 (JSON) + EPIC ground truth narration + 时序元数据 + 异常标记 + 混合检索能力。</p>
+</blockquote>
+<hr />
+<h2 id="_1">目录</h2>
+<ol>
+<li><a href="#1-数据管道产出物概览">数据管道产出物概览</a></li>
+<li><a href="#2-第一层直接可训练模型">第一层：直接可训练模型</a></li>
+<li><a href="#3-第二层检索增强具身策略">第二层：检索增强具身策略</a></li>
+<li><a href="#4-第三层世界模型与前瞻规划">第三层：世界模型与前瞻规划</a></li>
+<li><a href="#5-第四层数据飞轮与持续学习">第四层：数据飞轮与持续学习</a></li>
+<li><a href="#6-qwen3-模型选型矩阵">Qwen3 模型选型矩阵</a></li>
+<li><a href="#7-关键差距与补齐路径">关键差距与补齐路径</a></li>
+<li><a href="#8-推荐训练路线">推荐训练路线</a></li>
+</ol>
+<hr />
+<h2 id="1">1. 数据管道产出物概览</h2>
+<div class="codehilite"><pre><span></span><code><span class="n">Pipeline</span><span class="w"> </span><span class="err">产出物</span><span class="w"> </span><span class="p">(</span><span class="n">per</span><span class="w"> </span><span class="n">frame</span><span class="p">)</span><span class="err">:</span>
+<span class="w">  </span><span class="err">┌──────────────────────────────────────────────────────┐</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">视觉:</span><span class="w">   </span><span class="n">frame_image</span><span class="w"> </span><span class="p">(</span><span class="n">OSS</span><span class="w"> </span><span class="n">JPG</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1152</span><span class="o">-</span><span class="n">dim</span><span class="w"> </span><span class="n">embedding</span><span class="w">   </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">语义:</span><span class="w">   </span><span class="n">objects</span><span class="p">[],</span><span class="w"> </span><span class="n">actions</span><span class="p">[],</span><span class="w"> </span><span class="n">lighting</span><span class="p">,</span><span class="w"> </span><span class="n">occlusion</span><span class="w">     </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">语言:</span><span class="w">   </span><span class="n">gt_narration</span><span class="w"> </span><span class="p">(</span><span class="s2">&quot;take cup&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">scene_desc</span><span class="w"> </span><span class="n">JSON</span><span class="w">  </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">时序:</span><span class="w">   </span><span class="n">timestamp</span><span class="p">,</span><span class="w"> </span><span class="n">video_id</span><span class="p">,</span><span class="w"> </span><span class="n">episode_id</span><span class="w">              </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">质量:</span><span class="w">   </span><span class="n">is_anomaly</span><span class="w"> </span><span class="p">(</span><span class="n">bool</span><span class="p">)</span><span class="w">                            </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">检索:</span><span class="w">   </span><span class="n">vector</span><span class="w"> </span><span class="n">ANN</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">scalar</span><span class="w"> </span><span class="k">filter</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">keyword</span><span class="w"> </span><span class="k">filter</span><span class="w">  </span><span class="err">│</span>
+<span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">预留:</span><span class="w">   </span><span class="n">proprioception_ts</span><span class="p">,</span><span class="w"> </span><span class="n">camera_pose</span><span class="p">,</span><span class="w"> </span><span class="n">action_label</span><span class="w"> </span><span class="err">│</span>
+<span class="w">  </span><span class="err">└──────────────────────────────────────────────────────┘</span>
+</code></pre></div>
+
+<p>核心洞察：这不只是一个"搜索引擎"，而是一个<strong>结构化的经验记忆系统</strong>。它把非结构化的视频流转化为可检索、可训练、可推理的数据资产。</p>
+<hr />
+<h2 id="2">2. 第一层：直接可训练模型</h2>
+<h3 id="21-affordance">2.1 Affordance 预测模型</h3>
+<p>输入: ego-centric 帧 → 输出: 每个物体的"可操作性"热力图</p>
+<div class="codehilite"><pre><span></span><code>训练数据:
+  frame_image ←→ objects[] + actions[]
+
+  &quot;cup&quot; 出现时 → action 通常是 &quot;take&quot; / &quot;wash&quot; / &quot;put-down&quot;
+  &quot;door&quot; 出现时 → action 通常是 &quot;open&quot; / &quot;close&quot;
+
+  → 模型学习: 看到杯子把手 → 高 affordance &quot;grasp&quot;
+              看到门把手   → 高 affordance &quot;pull&quot;
+</code></pre></div>
+
+<p>为什么我们的数据够用：每帧都有 <code>objects</code> + <code>actions</code> 的共现关系，统计 164 帧就能学到 "物体→可行动作" 的映射。扩大到数千帧后，可以做像素级 affordance grounding。</p>
+<h3 id="22-action-anticipation">2.2 动作预期模型 (Action Anticipation)</h3>
+<div class="codehilite"><pre><span></span><code>输入: 帧序列 [t-3s, t-2s, t-1s, t]
+输出: 预测 t+1 时刻的动作
+
+训练数据:
+  (P01_03 frames at t=0,2,4,6...) → action at t=8
+
+  例: 看到&quot;手伸向cupboard&quot; → 预测&quot;open cupboard&quot;
+      看到&quot;拿起了cup&quot; → 预测&quot;pour water&quot; 或 &quot;put down cup&quot;
+
+评估: 用 EPIC gt_narration 做时间对齐的 ground truth
+</code></pre></div>
+
+<p>我们的优势：<code>timestamp</code> 精确到帧级别，<code>gt_narration</code> 提供动作标签，可以构建 <code>(过去N帧, 下一帧动作)</code> 的监督信号。</p>
+<h3 id="23-scene-graph">2.3 场景图生成模型 (Scene Graph)</h3>
+<div class="codehilite"><pre><span></span><code>输入: ego-centric 帧
+输出: 场景图 {节点=物体, 边=空间/交互关系}
+
+训练数据推导:
+  从 objects[] 共现统计:
+    &quot;cup&quot; + &quot;table&quot; → ON(cup, table)
+    &quot;hand&quot; + &quot;cup&quot; → HOLDING(hand, cup)
+    &quot;fridge&quot; + &quot;door&quot; → HAS_PART(fridge, door)
+
+  从 actions[] 推导交互:
+    &quot;take&quot; + &quot;cup&quot; → INTERACT(hand, cup, take)
+</code></pre></div>
+
+<h3 id="24">2.4 异常检测 / 安全分类器</h3>
+<div class="codehilite"><pre><span></span><code>输入: ego-centric 帧序列
+输出: is_anomaly (bool) + 异常类型
+
+训练数据:
+  is_anomaly=true 的帧 (Qwen-VL 标注) → 正样本
+  is_anomaly=false 的帧 → 负样本
+
+进阶:
+  检索 &quot;重复 take&quot; → retry loop (失败模式)
+  检索 &quot;物体掉落&quot; → drop event (安全事故)
+  检索 &quot;操作中断&quot; → hesitation (不确定状态)
+</code></pre></div>
+
+<hr />
+<h2 id="3">3. 第二层：检索增强具身策略</h2>
+<h3 id="31-rag-for-robotics">3.1 检索增强策略网络 (RAG for Robotics)</h3>
+<p>这是最核心的应用 — 我们的 pipeline 本质上是机器人的<strong>情景记忆</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="err">┌─────────────────────────────────────────────────────────────┐</span>
+<span class="err">│</span><span class="w">              </span><span class="err">机器人决策循环</span><span class="w"> </span><span class="p">(</span><span class="n">with</span><span class="w"> </span><span class="n">episodic</span><span class="w"> </span><span class="n">memory</span><span class="p">)</span><span class="w">             </span><span class="err">│</span>
+<span class="err">│</span><span class="w">                                                             </span><span class="err">│</span>
+<span class="err">│</span><span class="w">  </span><span class="err">当前观察</span><span class="w"> </span><span class="p">(</span><span class="nb">camera</span><span class="w"> </span><span class="n">frame</span><span class="p">)</span><span class="w">                                     </span><span class="err">│</span>
+<span class="err">│</span><span class="w">      </span><span class="err">│</span><span class="w">                                                      </span><span class="err">│</span>
+<span class="err">│</span><span class="w">      </span><span class="err">├──→</span><span class="w"> </span><span class="n">Encode</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="mi">1152</span><span class="o">-</span><span class="n">dim</span><span class="w"> </span><span class="n">embedding</span><span class="w">                       </span><span class="err">│</span>
+<span class="err">│</span><span class="w">      </span><span class="err">│</span><span class="w">                                                      </span><span class="err">│</span>
+<span class="err">│</span><span class="w">      </span><span class="err">├──→</span><span class="w"> </span><span class="n">DashVector</span><span class="w"> </span><span class="err">检索:</span><span class="w"> </span><span class="s2">&quot;上次遇到类似场景是什么?&quot;</span><span class="w">           </span><span class="err">│</span>
+<span class="err">│</span><span class="w">      </span><span class="err">│</span><span class="w">    </span><span class="err">→</span><span class="w"> </span><span class="err">返回:</span><span class="w"> </span><span class="err">相似帧</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="err">当时的动作</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="err">结果</span><span class="p">(</span><span class="err">成功</span><span class="o">/</span><span class="err">失败</span><span class="p">)</span><span class="w">        </span><span class="err">│</span>
+<span class="err">│</span><span class="w">      </span><span class="err">│</span><span class="w">                                                      </span><span class="err">│</span>
+<span class="err">│</span><span class="w">      </span><span class="err">├──→</span><span class="w"> </span><span class="n">Qwen3</span><span class="o">-</span><span class="n">VL</span><span class="w"> </span><span class="err">推理:</span><span class="w"> </span><span class="s2">&quot;当前场景 + 历史经验 → 下一步?&quot;</span><span class="w">      </span><span class="err">│</span>
+<span class="err">│</span><span class="w">      </span><span class="err">│</span><span class="w">                                                      </span><span class="err">│</span>
+<span class="err">│</span><span class="w">      </span><span class="err">└──→</span><span class="w"> </span><span class="n">Policy</span><span class="err">:</span><span class="w"> </span><span class="n">action</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">f</span><span class="p">(</span><span class="n">current_frame</span><span class="p">,</span><span class="w"> </span><span class="n">retrieved_exp</span><span class="p">)</span><span class="w">  </span><span class="err">│</span>
+<span class="err">│</span><span class="w">                                                             </span><span class="err">│</span>
+<span class="err">│</span><span class="w">  </span><span class="err">执行动作</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">新帧</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">重新入库</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">记忆更新</span><span class="w">                        </span><span class="err">│</span>
+<span class="err">└─────────────────────────────────────────────────────────────┘</span>
+</code></pre></div>
+
+<p>与传统 RL 的区别：<br />
+- 传统 RL: 策略网络从零学习，靠试错积累<br />
+- RAG-RL: 策略网络可以"回忆"过去相似场景的经验，避免重复犯错</p>
+<p>我们的 pipeline 独特价值：<code>is_anomaly</code> 字段让检索可以区分"成功经验"和"失败经验" — 机器人不仅能回忆"我上次怎么做的"，还能知道"上次这样做失败了"。</p>
+<h3 id="32">3.2 模仿学习的示范检索</h3>
+<div class="codehilite"><pre><span></span><code>任务: &quot;把杯子从橱柜拿到桌子上&quot;
+
+Step 1: 检索 &quot;take cup from cupboard&quot;
+  → 返回 20 帧相关历史 (ego-centric 视角)
+  → 按时间排序 → 重构操作序列
+
+Step 2: 检索 &quot;put down cup on table&quot;  
+  → 返回 15 帧
+  → 重构放置序列
+
+Step 3: 拼接 → 完整 demonstration trajectory
+  → 喂给 Behavior Cloning 策略网络
+
+Step 4: 策略网络 + 当前观察 → 执行动作
+</code></pre></div>
+
+<h3 id="33-failure-recovery">3.3 失败恢复策略 (Failure Recovery)</h3>
+<div class="codehilite"><pre><span></span><code>检测到异常 (is_anomaly=true)
+  │
+  ├─ 检索时序上下文: 异常前 30s 的帧
+  │   → &quot;什么操作导致了失败?&quot;
+  │
+  ├─ 检索相似失败: contain_any(actions, [&quot;retry&quot;])
+  │   → &quot;上次类似失败后是怎么恢复的?&quot;
+  │
+  └─ 生成恢复策略:
+      → 如果 &quot;cup dropped&quot; → 重新拾取
+      → 如果 &quot;door stuck&quot; → 换方向拉
+      → 如果 &quot;object misplaced&quot; → 重新定位
+</code></pre></div>
+
+<hr />
+<h2 id="4">4. 第三层：世界模型与前瞻规划</h2>
+<h3 id="41">4.1 状态转移世界模型</h3>
+<div class="codehilite"><pre><span></span><code>输入: (frame_t, action_t)
+输出: 预测 frame_{t+1} (或其 embedding)
+
+训练数据:
+  从时序帧对构建:
+    (P01_03_f000120, &quot;open door&quot;) → P01_03_f000180
+    (P01_03_f000300, &quot;take cup&quot;)  → P01_03_f000360
+
+模型学习:
+  &quot;open door&quot; 后 → 门状态变化 (场景外观变化)
+  &quot;take cup&quot; 后  → 杯子从桌上消失 (手部出现杯子)
+  &quot;pour water&quot; 后 → 杯中出现液体
+
+应用:
+  → Model Predictive Control: 在脑中&quot;模拟&quot;多个候选动作
+  → 选最优动作执行
+  → 不需要物理仿真器 (learned world model)
+</code></pre></div>
+
+<p>我们的数据优势：embedding 空间天然度量场景相似度，可以在 embedding 空间做状态转移预测（不需要生成像素级图像）。</p>
+<hr />
+<h2 id="5">5. 第四层：数据飞轮与持续学习</h2>
+<div class="codehilite"><pre><span></span><code>                    ┌─────────────────┐
+                    │  机器人部署       │
+                    │  (持续采集视频)   │
+                    └────────┬────────┘
+                             │
+                    ┌────────▼────────┐
+                    │  Ingest Pipeline │
+                    │  (抽帧+embed+    │
+                    │   caption+入库)  │
+                    └────────┬────────┘
+                             │
+                    ┌────────▼────────┐
+                    │  DashVector      │
+                    │  (经验记忆库)     │
+                    └────────┬────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+     ┌────────▼───┐  ┌──────▼──────┐  ┌───▼──────────┐
+     │ 检索质量    │  │ 稀疏区域    │  │ 低置信度帧    │
+     │ 评估        │  │ 检测        │  │ 识别          │
+     │ (M5 评测)  │  │ (向量空间)  │  │ (caption 不   │
+     └────────┬───┘  └──────┬──────┘  │  确定帧)      │
+              │              │         └───┬──────────┘
+              └──────────────┼─────────────┘
+                             │
+                    ┌────────▼────────┐
+                    │  人工标注/修正    │
+                    │  (active learning)│
+                    └────────┬────────┘
+                             │
+                    ┌────────▼────────┐
+                    │  模型微调        │
+                    │  (Qwen-VL/Embed) │
+                    └────────┬────────┘
+                             │
+                    ┌────────▼────────┐
+                    │  更新模型 →      │
+                    │  重新入库 →      │
+                    │  机器人升级      │
+                    └─────────────────┘
+</code></pre></div>
+
+<hr />
+<h2 id="6-qwen3">6. Qwen3 模型选型矩阵</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">训练场景</th>
+<th style="text-align: left;">推荐模型</th>
+<th style="text-align: left;">参数</th>
+<th style="text-align: left;">GPU (LoRA)</th>
+<th style="text-align: left;">训练数据来源</th>
+<th style="text-align: left;">预期效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Embedding 质量提升</td>
+<td style="text-align: left;">Qwen3-VL-Embedding-2B</td>
+<td style="text-align: left;">2B</td>
+<td style="text-align: left;">1× A10</td>
+<td style="text-align: left;">(frame, narration) contrastive</td>
+<td style="text-align: left;">Recall@5: 0.80→0.88</td>
+</tr>
+<tr>
+<td style="text-align: left;">Caption 准确率</td>
+<td style="text-align: left;">Qwen3-VL-Flash + LoRA</td>
+<td style="text-align: left;">~7B</td>
+<td style="text-align: left;">1× A10</td>
+<td style="text-align: left;">(frame, scene_desc_JSON) SFT</td>
+<td style="text-align: left;">caption 准确率+15%</td>
+</tr>
+<tr>
+<td style="text-align: left;">检索重排序</td>
+<td style="text-align: left;">Qwen3-VL-Reranker-2B</td>
+<td style="text-align: left;">2B</td>
+<td style="text-align: left;">1× T4</td>
+<td style="text-align: left;">(query, frame, score)</td>
+<td style="text-align: left;">MRR: 0.73→0.85</td>
+</tr>
+<tr>
+<td style="text-align: left;">动作规划推理</td>
+<td style="text-align: left;">Qwen3-4B-Thinking</td>
+<td style="text-align: left;">4B</td>
+<td style="text-align: left;">1× A10</td>
+<td style="text-align: left;">(scene, retrieved_exp, action)</td>
+<td style="text-align: left;">因果推理链</td>
+</tr>
+<tr>
+<td style="text-align: left;">机器人代码生成</td>
+<td style="text-align: left;">Qwen3-Coder-7B</td>
+<td style="text-align: left;">7B</td>
+<td style="text-align: left;">1× A10</td>
+<td style="text-align: left;">(instruction+frame, control_code)</td>
+<td style="text-align: left;">ROS2 控制代码</td>
+</tr>
+<tr>
+<td style="text-align: left;">全模态理解</td>
+<td style="text-align: left;">Qwen3-Omni</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">多卡</td>
+<td style="text-align: left;">(video+audio, description)</td>
+<td style="text-align: left;">连续视频理解</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="7">7. 关键差距与补齐路径</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">训练目标</th>
+<th style="text-align: left;">我们有</th>
+<th style="text-align: left;">我们缺</th>
+<th style="text-align: left;">补齐方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Affordance 模型</td>
+<td style="text-align: left;">objects, actions</td>
+<td style="text-align: left;">物体 bounding box</td>
+<td style="text-align: left;">Qwen-VL 3D 定位能力（已有）</td>
+</tr>
+<tr>
+<td style="text-align: left;">动作预期</td>
+<td style="text-align: left;">timestamp, actions</td>
+<td style="text-align: left;">长序列标注</td>
+<td style="text-align: left;">扩大视频入库量</td>
+</tr>
+<tr>
+<td style="text-align: left;">场景图</td>
+<td style="text-align: left;">objects 共现</td>
+<td style="text-align: left;">关系标注 (ON/IN/NEAR)</td>
+<td style="text-align: left;">Qwen-VL prompt 扩展</td>
+</tr>
+<tr>
+<td style="text-align: left;">VLA 模型</td>
+<td style="text-align: left;">frame + language</td>
+<td style="text-align: left;">机器人动作轨迹</td>
+<td style="text-align: left;">接入 ROS2 proprioception（schema 已预留）</td>
+</tr>
+<tr>
+<td style="text-align: left;">世界模型</td>
+<td style="text-align: left;">帧序列</td>
+<td style="text-align: left;">连续动作信号</td>
+<td style="text-align: left;">补充 joint state 数据</td>
+</tr>
+<tr>
+<td style="text-align: left;">RL 策略</td>
+<td style="text-align: left;">检索增强</td>
+<td style="text-align: left;">reward signal</td>
+<td style="text-align: left;">人工反馈 + 任务成功率</td>
+</tr>
+</tbody>
+</table>
+<p>最关键的差距：VLA 模型需要 <code>proprioception</code> 数据（关节角度、末端执行器位姿）。我们的 schema 已预留了 <code>proprioception_ts</code> 和 <code>camera_pose</code> 字段 — 一旦采集端接入 IMU + 关节编码器，pipeline 可以直接扩展为 VLA 训练数据平台。</p>
+<hr />
+<h2 id="8">8. 推荐训练路线</h2>
+<div class="codehilite"><pre><span></span><code><span class="n">Phase</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">(</span><span class="n">立即</span><span class="p">,</span><span class="w"> </span><span class="n">单卡</span><span class="p">)</span><span class="o">:</span>
+<span class="w">  </span><span class="n">Qwen3</span><span class="o">-</span><span class="n">VL</span><span class="o">-</span><span class="n">Embedding</span><span class="mi">-2</span><span class="n">B</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">LoRA</span>
+<span class="w">  </span><span class="nl">数据</span><span class="p">:</span><span class="w"> </span><span class="n">EPIC</span><span class="w"> </span><span class="p">(</span><span class="n">frame</span><span class="p">,</span><span class="w"> </span><span class="n">narration</span><span class="p">)</span><span class="w"> </span><span class="n">contrastive</span>
+<span class="w">  </span><span class="nl">GPU</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="err">×</span><span class="w"> </span><span class="n">A10</span><span class="w"> </span><span class="p">(</span><span class="mi">24</span><span class="n">GB</span><span class="p">)</span>
+<span class="w">  </span><span class="nl">预期</span><span class="p">:</span><span class="w"> </span><span class="n">Recall</span><span class="mi">@5</span><span class="w"> </span><span class="n">从</span><span class="w"> </span><span class="mf">0.80</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="mf">0.88</span><span class="o">+</span>
+
+<span class="n">Phase</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">(</span><span class="n">短期</span><span class="p">,</span><span class="w"> </span><span class="n">单卡</span><span class="p">)</span><span class="o">:</span>
+<span class="w">  </span><span class="n">Qwen3</span><span class="o">-</span><span class="n">VL</span><span class="o">-</span><span class="n">Flash</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">LoRA</span>
+<span class="w">  </span><span class="nl">数据</span><span class="p">:</span><span class="w"> </span><span class="p">(</span><span class="n">frame</span><span class="p">,</span><span class="w"> </span><span class="n">scene_desc_JSON</span><span class="p">)</span><span class="w"> </span><span class="n">SFT</span>
+<span class="w">  </span><span class="nl">GPU</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="err">×</span><span class="w"> </span><span class="n">A10</span><span class="w"> </span><span class="p">(</span><span class="mi">24</span><span class="n">GB</span><span class="p">)</span>
+<span class="w">  </span><span class="nl">预期</span><span class="p">:</span><span class="w"> </span><span class="n">caption</span><span class="w"> </span><span class="n">准确率提升</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">检索质量提升</span>
+
+<span class="n">Phase</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="p">(</span><span class="n">中期</span><span class="p">,</span><span class="w"> </span><span class="n">双卡</span><span class="p">)</span><span class="o">:</span>
+<span class="w">  </span><span class="n">Qwen3</span><span class="o">-</span><span class="n">VL</span><span class="o">-</span><span class="n">Reranker</span><span class="mi">-2</span><span class="n">B</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">LoRA</span>
+<span class="w">  </span><span class="nl">数据</span><span class="p">:</span><span class="w"> </span><span class="p">(</span><span class="n">query</span><span class="p">,</span><span class="w"> </span><span class="n">frame</span><span class="p">,</span><span class="w"> </span><span class="n">relevance_score</span><span class="p">)</span>
+<span class="w">  </span><span class="nl">GPU</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="err">×</span><span class="w"> </span><span class="n">T4</span><span class="w"> </span><span class="p">(</span><span class="mi">16</span><span class="n">GB</span><span class="p">)</span>
+<span class="w">  </span><span class="nl">预期</span><span class="p">:</span><span class="w"> </span><span class="n">top</span><span class="mi">-10</span><span class="w"> </span><span class="n">精度提升</span><span class="p">,</span><span class="w"> </span><span class="n">MRR</span><span class="w"> </span><span class="n">从</span><span class="w"> </span><span class="mf">0.73</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="mf">0.85</span><span class="o">+</span>
+
+<span class="n">Phase</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="p">(</span><span class="n">长期</span><span class="p">,</span><span class="w"> </span><span class="n">多卡</span><span class="p">)</span><span class="o">:</span>
+<span class="w">  </span><span class="n">Qwen3</span><span class="mi">-4</span><span class="n">B</span><span class="o">-</span><span class="n">Thinking</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">LoRA</span>
+<span class="w">  </span><span class="nl">数据</span><span class="p">:</span><span class="w"> </span><span class="p">(</span><span class="n">scene</span><span class="p">,</span><span class="w"> </span><span class="n">retrieved_exp</span><span class="p">,</span><span class="w"> </span><span class="n">action_plan</span><span class="p">)</span>
+<span class="w">  </span><span class="nl">GPU</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="err">×</span><span class="w"> </span><span class="n">A10</span>
+<span class="w">  </span><span class="nl">预期</span><span class="p">:</span><span class="w"> </span><span class="n">动作规划</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">失败案例推理</span>
+</code></pre></div>
+
+<hr />
+<h2 id="_2">总结</h2>
+<blockquote>
+<p>这个 pipeline 的本质是 <strong>embodied-AI 的结构化经验记忆</strong>。它把非结构化的视频流转化为 <code>(视觉, 语义, 时序, 质量)</code> 四维结构化数据，使得机器人能够<strong>记住经验、检索相似场景、预测动作后果、识别失败模式、持续迭代进化</strong>。短期可训练 affordance / 动作预期 / 异常检测模型；中期支持检索增强策略和模仿学习；长期接入 proprioception 后可训练完整的 VLA 世界模型。</p>
+</blockquote>
+<hr />
+<p><a href="milestone6_egocentric_design.html">← 返回技术设计文档</a> | <a href="../">← 返回项目首页</a></p>
+</body>
+</html>

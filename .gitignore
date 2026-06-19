@@ -1,0 +1,25 @@
+# Environment
+.env
+deploy/.env.cloud
+
+# Storage directories (local data)
+storage/videos/
+storage/frames/
+storage/EPIC-KITCHENS/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.eggs/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

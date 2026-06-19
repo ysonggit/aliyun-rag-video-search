@@ -1,0 +1,17 @@
+# Core SDK
+dashscope>=1.20.0          # Alibaba Cloud DashScope (百炼) SDK
+dashvector>=1.0.10         # DashVector Python SDK
+
+# Video processing
+opencv-python>=4.8.0       # Video frame extraction
+
+# Utils
+python-dotenv>=1.0.0       # Load .env files
+numpy>=1.24.0              # Vector operations
+Pillow>=10.0.0             # Image handling
+
+# Optional: OpenAI-compatible interface for Qwen-VL structured output
+openai>=1.12.0             # For response_format json_object support
+
+# UI
+streamlit>=1.30.0          # Web UI for search
