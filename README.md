@@ -35,6 +35,17 @@ Two flows share the `pipeline/` package. A `FrameMetadata` dataclass carries sta
 every ingestion stage. See [CLAUDE.md](CLAUDE.md) for the detailed architecture, including the
 hybrid (server-side scalar + client-side array) filtering design.
 
+### Ingestion performance
+
+![Ingestion Pipeline — Concurrent Stages + Checkpoint](docs/ingestion_pipeline.svg)
+
+Ingestion is parallelized end-to-end: **embedding and captioning overlap** (they write disjoint
+`FrameMetadata` fields), frames **upload to OSS in parallel**, and indexed `frame_id`s are
+appended to a **checkpoint manifest** (`storage/manifests/{collection}.txt`) so interrupted runs
+resume without re-spending on the DashScope APIs. Concurrency is tunable via `EMBED_WORKERS`
+(default 4), `CAPTION_WORKERS` (8), and `UPLOAD_WORKERS` (8). On the query side, repeated query
+text is embedding-cached and array-filtered searches adaptively over-fetch to fill `top_k`.
+
 ## Quick start
 
 ```bash
