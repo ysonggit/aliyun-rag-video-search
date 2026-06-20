@@ -2,12 +2,10 @@
 .env
 deploy/.env.cloud
 
-# Storage directories (local data + ingest runtime artifacts)
+# Storage directories (local data)
 storage/videos/
 storage/frames/
 storage/EPIC-KITCHENS/
-storage/manifests/
-storage/facets/
 
 # Python
 __pycache__/
@@ -15,8 +13,6 @@ __pycache__/
 *.pyo
 .eggs/
 *.egg-info/
-.venv*/
-venv/
 
 # IDE
 .idea/

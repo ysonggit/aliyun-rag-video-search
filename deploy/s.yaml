@@ -30,56 +30,19 @@ resources:
       timeout: 60
       instanceConcurrency: 10
       customContainerConfig:
-        image: ${env(ACR_REGISTRY)}/rag-query:latest
+        image: ${env(ACR_REGISTRY)}/rag-query:v2
         port: 9000
       environmentVariables:
         DASHSCOPE_API_KEY: ${vars.dashscope_key}
         DASHSCOPE_BASE_URL: https://dashscope-intl.aliyuncs.com/api/v1
         DASHVECTOR_API_KEY: ${vars.dashvector_key}
         DASHVECTOR_ENDPOINT: ${vars.dashvector_endpoint}
-        DV_COLLECTION_NAME: scene_frames
+        DV_COLLECTION_NAME: scene_frames_2fps
         EMBEDDING_MODEL: tongyi-embedding-vision-plus
-        # Shared secret that the API Gateway injects as X-Internal-Token.
-        # If set, /search refuses any request missing/mismatching the header.
-        # Defense-in-depth against direct hits to this FC URL.
-        INTERNAL_TOKEN: ${env(INTERNAL_TOKEN)}
-      triggers:
-        - triggerName: http
-          triggerType: http
-          triggerConfig:
-            methods: [GET, POST]
-            # Stays anonymous at FC level — API Gateway is the real auth layer.
-            # The INTERNAL_TOKEN header check in code blocks direct URL abuse.
-            authType: anonymous
-
-  # ── Web UI (Streamlit) ─────────────────────────────────
-  # Public-facing search UI. Sits behind API Gateway + WAF in production.
-  # Embeds pipeline.retriever directly (does not call query-service over HTTP),
-  # so it needs the same DashScope/DashVector creds.
-  web_ui:
-    component: fc3
-    props:
-      region: ${vars.region}
-      functionName: web-ui
-      runtime: custom-container
-      cpu: 1
-      memorySize: 2048
-      diskSize: 512
-      timeout: 60
-      instanceConcurrency: 10
-      customContainerConfig:
-        image: ${env(ACR_REGISTRY)}/rag-webui:latest
-        port: 9000
-      environmentVariables:
-        DASHSCOPE_API_KEY: ${vars.dashscope_key}
-        DASHSCOPE_BASE_URL: https://dashscope-intl.aliyuncs.com/api/v1
-        DASHVECTOR_API_KEY: ${vars.dashvector_key}
-        DASHVECTOR_ENDPOINT: ${vars.dashvector_endpoint}
-        DV_COLLECTION_NAME: scene_frames
-        EMBEDDING_MODEL: tongyi-embedding-vision-plus
-        # Session-scoped password gate rendered by app.py.
-        # If unset, the UI is open (dev only). Set a strong random string in prod.
-        WEBUI_PASSWORD: ${env(WEBUI_PASSWORD)}
+        OSS_ACCESS_KEY_ID: ${env(OSS_ACCESS_KEY_ID)}
+        OSS_ACCESS_KEY_SECRET: ${env(OSS_ACCESS_KEY_SECRET)}
+        OSS_ENDPOINT: ${env(OSS_ENDPOINT)}
+        OSS_BUCKET_NAME: ${env(OSS_BUCKET_NAME)}
       triggers:
         - triggerName: http
           triggerType: http
@@ -107,7 +70,7 @@ resources:
         DASHSCOPE_BASE_URL: https://dashscope-intl.aliyuncs.com/api/v1
         DASHVECTOR_API_KEY: ${vars.dashvector_key}
         DASHVECTOR_ENDPOINT: ${vars.dashvector_endpoint}
-        DV_COLLECTION_NAME: scene_frames
+        DV_COLLECTION_NAME: scene_frames_2fps
         EMBEDDING_MODEL: tongyi-embedding-vision-plus
         VL_MODEL: qwen-vl-max
         OSS_ENDPOINT: ${env(OSS_ENDPOINT)}

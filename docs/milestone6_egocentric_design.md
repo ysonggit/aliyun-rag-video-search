@@ -8,14 +8,6 @@
 
 ## 系统架构总览
 
-### 摄入管线性能优化（并发 + 断点续传）
-
-![Ingestion Pipeline — Concurrent Stages + Checkpoint](ingestion_pipeline.svg)
-
-当前摄入管线的性能优化：抽帧后 **Embedder 与 Captioner 并发执行**（写入互不相干的字段，不再串行两遍），
-帧图片**并行上传 OSS**；已入库的 `frame_id` 追加到**断点续传 manifest**（`storage/manifests/{collection}.txt`），
-重跑时跳过、不再重复消耗 DashScope API。并发度由 `EMBED_WORKERS` / `CAPTION_WORKERS` / `UPLOAD_WORKERS` 控制。
-
 ### 生产环境：流式摄入 + 查询分离
 
 ```

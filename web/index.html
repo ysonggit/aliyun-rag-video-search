@@ -100,9 +100,6 @@
   <div class="filters">
     <select id="videoFilter">
       <option value="">All Videos</option>
-      <option value="P01_03">P01_03</option>
-      <option value="P01_04">P01_04</option>
-      <option value="P01_08">P01_08</option>
     </select>
     <select id="topK">
       <option value="6">Top 6</option>
@@ -129,6 +126,21 @@
 
   <script>
     const API = "https://query-service-eftocucisq.ap-southeast-1.fcapp.run";
+
+    // Load available videos on page load
+    (async function() {
+      try {
+        const resp = await fetch(`${API}/search?q=scene&top_k=50`);
+        const data = await resp.json();
+        const videos = [...new Set(data.results.map(r => r.video_id))].sort();
+        const sel = document.getElementById('videoFilter');
+        videos.forEach(v => {
+          const opt = document.createElement('option');
+          opt.value = v; opt.textContent = v;
+          sel.appendChild(opt);
+        });
+      } catch(e) { console.warn('Could not load video list:', e); }
+    })();
 
     async function doSearch() {
       const q = document.getElementById('query').value.trim();
