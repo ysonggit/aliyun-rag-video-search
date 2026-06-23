@@ -22,20 +22,24 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # So with base=storage, files go to storage/EPIC-KITCHENS/
 VIDEO_OUTPUT = PROJECT_ROOT / "storage"
 
-# Videos selected (sorted by annotation count, all have >20 annotations):
-#   P01_02:  145 annotations, 8.4min
-#   P01_06:  119 annotations, 8.2min
-#   P02_02:   89 annotations, 3.5min
-#   P02_01:   87 annotations, 3.9min
-#   P01_16:   73 annotations, 2.9min
-#   P01_07:   57 annotations, 2.7min
-#   P01_03:   42 annotations, 2.0min
-#   P01_04:   32 annotations, 1.8min
-#   P01_08:   32 annotations, 1.6min
-#   P01_10:   26 annotations, 2.3min
+# 20 videos across 8 participants (P01-P08) for fine-tuning diversity
 SELECTED_VIDEOS = [
-    "P01_02", "P01_03", "P01_04", "P01_06", "P01_07",
-    "P01_08", "P01_10", "P01_16", "P02_01", "P02_02",
+    # P01 (7 videos, already downloaded)
+    "P01_03", "P01_04", "P01_06", "P01_07", "P01_08", "P01_10", "P01_16",
+    # P02 (2 videos, already downloaded)
+    "P02_01", "P02_02",
+    # P03 (2 new)
+    "P03_107", "P03_123",
+    # P04 (2 new)
+    "P04_115", "P04_117",
+    # P05 (2 new)
+    "P05_02", "P05_06",
+    # P06 (2 new)
+    "P06_107", "P06_113",
+    # P07 (2 new)
+    "P07_110", "P07_115",
+    # P08 (1 new)
+    "P08_04",
 ]
 
 

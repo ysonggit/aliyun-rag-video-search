@@ -43,8 +43,14 @@ EPIC_ROOT = ROOT / "EPIC-KITCHENS"
 ANNOTATIONS_DIR = os.environ.get("EPIC_ANNOTATIONS_DIR", "/tmp/epic-kitchens-100-annotations")
 FRAME_OUTPUT = ROOT / "storage" / "frames"
 VIDEOS = [
-    "P01_02", "P01_03", "P01_04", "P01_06", "P01_07",
-    "P01_08", "P01_10", "P01_16", "P02_01", "P02_02",
+    "P01_03", "P01_04", "P01_06", "P01_07", "P01_08", "P01_10", "P01_16",
+    "P02_01", "P02_02",
+    "P03_107", "P03_123",
+    "P04_115", "P04_117",
+    "P05_02", "P05_06",
+    "P06_107", "P06_113",
+    "P07_110", "P07_115",
+    "P08_04",
 ]
 
 
