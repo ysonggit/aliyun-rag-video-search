@@ -71,6 +71,9 @@ python scripts/ingest_epic.py --fps 2.0 --force --collection scene_frames_2fps
 
 Captioning runs concurrently (Qwen-VL has no batch API); tune with `CAPTION_WORKERS=8`.
 
+The default dataset spans **20 EPIC-KITCHENS videos across 8 participants (P01–P08)** for
+cross-kitchen diversity — see `VIDEOS` in [scripts/ingest_epic.py](scripts/ingest_epic.py).
+
 ### Evaluate retrieval quality
 
 ```bash
@@ -83,6 +86,16 @@ DV_COLLECTION_NAME=scene_frames_2fps python tests/test_evaluation.py
 `deploy/` contains a Serverless Devs config (`s.yaml`, FC v3 custom-container) and Dockerfiles
 for the ingest and query functions. See [deploy/README.md](deploy/README.md) for the full
 serverless deployment guide (OSS trigger → ingest pipeline; HTTP `GET /search` → query service).
+
+Two serverless functions run in FC (Singapore, `ap-southeast-1`):
+
+- **`ingest-pipeline`** — OSS-triggered: download → extract → embed + caption → upload → index.
+- **`query-service`** — HTTP `GET /search?q=...&top_k=...`; returns results with **signed OSS
+  URLs** (1 h expiry) so a browser can load images from the private frame bucket.
+
+A dependency-free static frontend, [web/index.html](web/index.html), calls `query-service`
+directly (`open web/index.html`); it auto-populates the video filter from the collection. A
+local Streamlit UI ([app.py](app.py)) embeds the retriever in-process for development.
 
 ## Layout
 

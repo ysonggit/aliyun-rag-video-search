@@ -1,0 +1,3 @@
+# Web UI (Streamlit) — extends requirements.fc.txt
+-r requirements.fc.txt
+streamlit>=1.30.0

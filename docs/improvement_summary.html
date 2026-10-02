@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>改进工作总结 — RAG 视频检索系统</title>
+  
+<style>
+  :root { --bg: #0d1117; --surface: #161b22; --border: #30363d; --text: #c9d1d9; --text-muted: #8b949e; --accent: #58a6ff; --accent-alt: #79c0ff; --green: #3fb950; --orange: #d2991d; --code-bg: #1c2128; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+  h1 { font-size: 2rem; border-bottom: 2px solid var(--border); padding-bottom: 0.6rem; margin: 2rem 0 1rem; color: #f0f6fc; }
+  h2 { font-size: 1.45rem; margin: 2.2rem 0 0.8rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); color: var(--accent-alt); }
+  h3 { font-size: 1.15rem; margin: 1.5rem 0 0.5rem; color: #e6edf3; }
+  p { margin: 0.7rem 0; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  blockquote { border-left: 3px solid var(--accent); padding: 0.5rem 1rem; margin: 1rem 0; background: var(--surface); border-radius: 0 4px 4px 0; color: var(--text-muted); }
+  code { font-family: "SF Mono", Menlo, Consolas, monospace; background: var(--code-bg); padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.9em; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.2rem; overflow-x: auto; margin: 0.8rem 0; font-size: 0.85em; line-height: 1.6; }
+  pre code { background: none; padding: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.92em; }
+  th, td { border: 1px solid var(--border); padding: 0.55rem 0.8rem; text-align: left; }
+  th { background: var(--surface); font-weight: 600; color: #f0f6fc; }
+  tr:hover td { background: rgba(88, 166, 255, 0.04); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+  ul, ol { padding-left: 1.8rem; margin: 0.5rem 0; }
+  @media print { body { background: white; color: black; max-width: none; } }
+</style>
+
+</head>
+<body>
+  <h1 id="rag">RAG 视频检索系统 — 改进工作总结</h1>
+<blockquote>
+<p>2026-06-17 ~ 2026-06-20 | 从本地原型到云端生产，从 164 帧到 2805 帧，从串行 75min 到并发 20min</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、里程碑回顾</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">日期</th>
+<th style="text-align: left;">里程碑</th>
+<th style="text-align: left;">交付物</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">06-17</td>
+<td style="text-align: left;">M1 环境 + 连通性</td>
+<td style="text-align: left;">DashScope SDK + DashVector + 连通性测试</td>
+</tr>
+<tr>
+<td style="text-align: left;">06-17</td>
+<td style="text-align: left;">M2 抽帧模块</td>
+<td style="text-align: left;">OpenCV 抽帧 + EPIC-KITCHENS 标注交叉引用</td>
+</tr>
+<tr>
+<td style="text-align: left;">06-17</td>
+<td style="text-align: left;">M3 Embedding + 入库</td>
+<td style="text-align: left;">逐帧 embedding + Qwen-VL caption + DashVector upsert</td>
+</tr>
+<tr>
+<td style="text-align: left;">06-17</td>
+<td style="text-align: left;">M4 检索</td>
+<td style="text-align: left;">Hybrid 检索（向量 + scalar filter + 数组后过滤）</td>
+</tr>
+<tr>
+<td style="text-align: left;">06-17</td>
+<td style="text-align: left;">M5 评测</td>
+<td style="text-align: left;">20 query 评测：Recall@5=0.80, MRR=0.73</td>
+</tr>
+<tr>
+<td style="text-align: left;">06-17</td>
+<td style="text-align: left;">M6 设计文档</td>
+<td style="text-align: left;">Ego-centric 映射 + 模型对比 + 生产架构</td>
+</tr>
+<tr>
+<td style="text-align: left;">06-18</td>
+<td style="text-align: left;">Streamlit UI</td>
+<td style="text-align: left;">本地搜索界面</td>
+</tr>
+<tr>
+<td style="text-align: left;">06-18</td>
+<td style="text-align: left;">云端部署</td>
+<td style="text-align: left;">FC ingest + FC query + OSS + ACR (新加坡)</td>
+</tr>
+<tr>
+<td style="text-align: left;">06-18</td>
+<td style="text-align: left;">静态 HTML 前端</td>
+<td style="text-align: left;">web/index.html 纯前端搜索界面</td>
+</tr>
+<tr>
+<td style="text-align: left;">06-18</td>
+<td style="text-align: left;">架构图</td>
+<td style="text-align: left;">SVG 技术架构图，嵌入 HTML 文档</td>
+</tr>
+<tr>
+<td style="text-align: left;">06-18</td>
+<td style="text-align: left;">训练白皮书</td>
+<td style="text-align: left;">Embodied-AI 4 层训练场景 + Qwen3 选型</td>
+</tr>
+<tr>
+<td style="text-align: left;">06-19</td>
+<td style="text-align: left;">并发优化</td>
+<td style="text-align: left;">Claude 优化：embed 4w + caption 8w + oss 8w 并发</td>
+</tr>
+<tr>
+<td style="text-align: left;">06-19</td>
+<td style="text-align: left;">Signed URL</td>
+<td style="text-align: left;">OSS 私有 bucket signed URL 方案</td>
+</tr>
+<tr>
+<td style="text-align: left;">06-19</td>
+<td style="text-align: left;">数据扩展</td>
+<td style="text-align: left;">9→20 视频, 2→8 参与者, 1762→2805 帧</td>
+</tr>
+<tr>
+<td style="text-align: left;">06-20</td>
+<td style="text-align: left;">微调计划</td>
+<td style="text-align: left;">Phase 1 Qwen3-VL-Embedding-2B LoRA 方案</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_2">二、核心改进</h2>
+<h3 id="21">2.1 数据规模扩展</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: left;">初始</th>
+<th style="text-align: left;">当前</th>
+<th style="text-align: left;">倍数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">视频</td>
+<td style="text-align: left;">3</td>
+<td style="text-align: left;">20</td>
+<td style="text-align: left;">6.7×</td>
+</tr>
+<tr>
+<td style="text-align: left;">参与者</td>
+<td style="text-align: left;">1 (P01)</td>
+<td style="text-align: left;">8 (P01-P08)</td>
+<td style="text-align: left;">8×</td>
+</tr>
+<tr>
+<td style="text-align: left;">帧数</td>
+<td style="text-align: left;">164</td>
+<td style="text-align: left;">2,805</td>
+<td style="text-align: left;">17.1×</td>
+</tr>
+<tr>
+<td style="text-align: left;">有标注帧</td>
+<td style="text-align: left;">121</td>
+<td style="text-align: left;">~1,401</td>
+<td style="text-align: left;">11.6×</td>
+</tr>
+<tr>
+<td style="text-align: left;">标注段</td>
+<td style="text-align: left;">106</td>
+<td style="text-align: left;">1,562</td>
+<td style="text-align: left;">14.7×</td>
+</tr>
+<tr>
+<td style="text-align: left;">抽帧频率</td>
+<td style="text-align: left;">0.5 fps</td>
+<td style="text-align: left;">1.0 fps</td>
+<td style="text-align: left;">2×</td>
+</tr>
+<tr>
+<td style="text-align: left;">OSS 帧图片</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">2,805</td>
+<td style="text-align: left;">—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么扩展</strong>：初始 3 视频 164 帧仅覆盖 1 个厨房，embedding 模型会过拟合到 P01 的场景布局。20 视频 8 参与者提供跨厨房多样性，使检索结果可泛化。</p>
+<h3 id="22">2.2 性能优化</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">步骤</th>
+<th style="text-align: left;">串行 (初始)</th>
+<th style="text-align: left;">并发 (当前)</th>
+<th style="text-align: left;">加速</th>
+<th style="text-align: left;">实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Embedding</td>
+<td style="text-align: left;">4 min</td>
+<td style="text-align: left;">1 min</td>
+<td style="text-align: left;">4×</td>
+<td style="text-align: left;">ThreadPoolExecutor(4) + batch≤8</td>
+</tr>
+<tr>
+<td style="text-align: left;">Captioning</td>
+<td style="text-align: left;">64 min</td>
+<td style="text-align: left;">18 min</td>
+<td style="text-align: left;">3.6×</td>
+<td style="text-align: left;">ThreadPoolExecutor(8)</td>
+</tr>
+<tr>
+<td style="text-align: left;">OSS 上传</td>
+<td style="text-align: left;">3 min</td>
+<td style="text-align: left;">0.5 min</td>
+<td style="text-align: left;">6×</td>
+<td style="text-align: left;">ThreadPoolExecutor(8)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Embed+Caption</td>
+<td style="text-align: left;">68 min (串行)</td>
+<td style="text-align: left;">18 min (并行)</td>
+<td style="text-align: left;">3.8×</td>
+<td style="text-align: left;">两步同时执行</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>总管线</strong></td>
+<td style="text-align: left;"><strong>75 min</strong></td>
+<td style="text-align: left;"><strong>~20 min</strong></td>
+<td style="text-align: left;"><strong>3.75×</strong></td>
+<td style="text-align: left;">—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键改进</strong>：Claude 的优化将 embedding 和 captioning 从串行改为并行执行，同时各自内部多线程并发调 API。</p>
+<h3 id="23">2.3 检索质量</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">评测版本</th>
+<th style="text-align: left;">帧数</th>
+<th style="text-align: left;">pure_vector R@5</th>
+<th style="text-align: left;">hybrid_video R@5</th>
+<th style="text-align: left;">hybrid_verb R@5</th>
+<th style="text-align: left;">hybrid_verb R@10</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">v1 strict (164帧)</td>
+<td style="text-align: left;">164</td>
+<td style="text-align: left;">0.25</td>
+<td style="text-align: left;">0.30</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">—</td>
+</tr>
+<tr>
+<td style="text-align: left;">v2 soft (164帧)</td>
+<td style="text-align: left;">164</td>
+<td style="text-align: left;">0.70</td>
+<td style="text-align: left;">0.75</td>
+<td style="text-align: left;">0.80</td>
+<td style="text-align: left;">0.80</td>
+</tr>
+<tr>
+<td style="text-align: left;">v2 soft (1762帧)</td>
+<td style="text-align: left;">1762</td>
+<td style="text-align: left;">0.45</td>
+<td style="text-align: left;">0.60</td>
+<td style="text-align: left;">0.80</td>
+<td style="text-align: left;">0.90</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>v2 soft (2805帧)</strong></td>
+<td style="text-align: left;">2805</td>
+<td style="text-align: left;"><strong>0.25</strong></td>
+<td style="text-align: left;"><strong>0.60</strong></td>
+<td style="text-align: left;"><strong>0.80</strong></td>
+<td style="text-align: left;"><strong>0.90</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键发现</strong>：<br />
+- 数据量增加后 pure_vector Recall@5 下降 (0.70→0.25) — 向量空间更密集，噪声增加<br />
+- hybrid_verb 始终最强 — verb 标签过滤有效抑制噪声<br />
+- Recall@10=0.90 稳定 — 更大候选池中能找到正确帧<br />
+- <strong>结论：hybrid_verb 是生产推荐策略，Phase 1 微调目标推到 Recall@5=0.88+</strong></p>
+<h3 id="24">2.4 安全改进</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">问题</th>
+<th style="text-align: left;">初始方案</th>
+<th style="text-align: left;">改进方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">OSS 图片访问</td>
+<td style="text-align: left;">public URL (403 Forbidden)</td>
+<td style="text-align: left;">Signed URL (1h 过期, slash_safe=True)</td>
+</tr>
+<tr>
+<td style="text-align: left;">API 密钥</td>
+<td style="text-align: left;">硬编码风险</td>
+<td style="text-align: left;">环境变量 + .env.cloud (override=True)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Bucket ACL</td>
+<td style="text-align: left;">尝试 public-read (被拒)</td>
+<td style="text-align: left;">保持 private + FC 签名返回</td>
+</tr>
+</tbody>
+</table>
+<h3 id="25">2.5 架构演进</h3>
+<pre><code>阶段 1 (本地原型):
+  Mac → OpenCV → DashScope API → DashVector
+  视频/帧在本地磁盘, 断网即停
+
+阶段 2 (云端部署):
+  OSS → FC ingest-pipeline → DashScope → DashVector
+  FC query-service → Flask :9000 → signed URL 返回
+  web/index.html → 纯前端调 FC API
+  读/写完全解耦, 云端自治
+
+阶段 3 (优化+扩展, 当前):
+  20 视频 8 参与者 → 并发管线 (embed 4w + caption 8w + oss 8w)
+  → 2805 帧 OSS + DashVector → signed URL 检索
+  → M5 评测 Recall@10=0.90
+</code></pre>
+<hr />
+<h2 id="infra-ops-agent">三、踩坑记录 (已内化到 infra-ops agent)</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">#</th>
+<th style="text-align: left;">问题</th>
+<th style="text-align: left;">根因</th>
+<th style="text-align: left;">解决</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;">FC exec format error</td>
+<td style="text-align: left;">Mac ARM64 build, FC 需 x86_64</td>
+<td style="text-align: left;">docker buildx --platform linux/amd64</td>
+</tr>
+<tr>
+<td style="text-align: left;">2</td>
+<td style="text-align: left;">FC 函数不启动</td>
+<td style="text-align: left;">custom-container 需要 HTTP server</td>
+<td style="text-align: left;">Flask :9000 + CMD</td>
+</tr>
+<tr>
+<td style="text-align: left;">3</td>
+<td style="text-align: left;">DashScope InvalidApiKey</td>
+<td style="text-align: left;">新加坡端点需显式设置</td>
+<td style="text-align: left;">dashscope.api_key + base_http_api_url</td>
+</tr>
+<tr>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">DashVector contain_any 无效</td>
+<td style="text-align: left;">新加坡集群不支持数组过滤</td>
+<td style="text-align: left;">标量服务端 + 数组客户端</td>
+</tr>
+<tr>
+<td style="text-align: left;">5</td>
+<td style="text-align: left;">OSS trigger SourceARN 缺失</td>
+<td style="text-align: left;">s.yaml 需指定 bucket ARN</td>
+<td style="text-align: left;">手动 FC 控制台添加</td>
+</tr>
+<tr>
+<td style="text-align: left;">6</td>
+<td style="text-align: left;">FC 镜像不更新</td>
+<td style="text-align: left;">latest tag 被缓存</td>
+<td style="text-align: left;">用 :v2 tag 强制拉取</td>
+</tr>
+<tr>
+<td style="text-align: left;">7</td>
+<td style="text-align: left;">Ingest OSS 上传崩溃</td>
+<td style="text-align: left;">base64 编码后路径变成 URL</td>
+<td style="text-align: left;">先 embed/caption 本地文件, 再上传 OSS</td>
+</tr>
+<tr>
+<td style="text-align: left;">8</td>
+<td style="text-align: left;">OSS signed URL 403</td>
+<td style="text-align: left;">slash_safe 未启用</td>
+<td style="text-align: left;">bucket.sign_url(slash_safe=True)</td>
+</tr>
+<tr>
+<td style="text-align: left;">9</td>
+<td style="text-align: left;">Captioning 64min 太慢</td>
+<td style="text-align: left;">串行调 API</td>
+<td style="text-align: left;">ThreadPoolExecutor(8) 并发</td>
+</tr>
+<tr>
+<td style="text-align: left;">10</td>
+<td style="text-align: left;">Debian libgl1-mesa-glx 缺失</td>
+<td style="text-align: left;">Trixie 改名</td>
+<td style="text-align: left;">改用 libgl1</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">四、当前系统状态</h2>
+<h3 id="ap-southeast-1">云端资源 (新加坡 ap-southeast-1)</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">组件</th>
+<th style="text-align: left;">状态</th>
+<th style="text-align: left;">详情</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">OSS Bucket</td>
+<td style="text-align: left;"><code>rag-videos-krones</code> (private)</td>
+<td style="text-align: left;">2805 帧图片, signed URL</td>
+</tr>
+<tr>
+<td style="text-align: left;">DashVector</td>
+<td style="text-align: left;"><code>scene_frames_2fps</code></td>
+<td style="text-align: left;">2805 vectors, 1152-dim, 18 fields</td>
+</tr>
+<tr>
+<td style="text-align: left;">FC query-service</td>
+<td style="text-align: left;">Active (v2 镜像)</td>
+<td style="text-align: left;">Flask :9000, 2GB, signed URL</td>
+</tr>
+<tr>
+<td style="text-align: left;">FC ingest-pipeline</td>
+<td style="text-align: left;">Active (v2 镜像)</td>
+<td style="text-align: left;">Flask :9000, 4GB, OSS trigger</td>
+</tr>
+<tr>
+<td style="text-align: left;">ACR</td>
+<td style="text-align: left;">rag-query:v2 + rag-ingest:v2</td>
+<td style="text-align: left;">x86_64, 个人版</td>
+</tr>
+<tr>
+<td style="text-align: left;">DashScope</td>
+<td style="text-align: left;">新加坡 intl 端点</td>
+<td style="text-align: left;">tongyi-embedding-vision-plus + qwen-vl-max</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_4">可用入口</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">入口</th>
+<th style="text-align: left;">地址</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">云端搜索 API</td>
+<td style="text-align: left;"><code>https://query-service-eftocucisq.ap-southeast-1.fcapp.run/search?q=take+cup</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">浏览器 UI</td>
+<td style="text-align: left;"><code>open web/index.html</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">本地 Streamlit</td>
+<td style="text-align: left;"><code>streamlit run app.py</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">M5 评测</td>
+<td style="text-align: left;"><code>DV_COLLECTION_NAME=scene_frames_2fps python3 tests/test_evaluation.py</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">技术文档</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">文档</th>
+<th style="text-align: left;">路径</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">技术设计 (含架构图)</td>
+<td style="text-align: left;"><code>docs/milestone6_egocentric_design.html</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">训练白皮书</td>
+<td style="text-align: left;"><code>docs/embodied_ai_training.html</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">微调计划</td>
+<td style="text-align: left;"><code>docs/phase1_finetune_plan.md</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">架构图 SVG</td>
+<td style="text-align: left;"><code>docs/architecture.svg</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_6">五、下一步</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">优先级</th>
+<th style="text-align: left;">任务</th>
+<th style="text-align: left;">预期</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">P0</td>
+<td style="text-align: left;">Phase 1 微调 Qwen3-VL-Embedding-2B LoRA</td>
+<td style="text-align: left;">Recall@5 0.80→0.88+</td>
+</tr>
+<tr>
+<td style="text-align: left;">P1</td>
+<td style="text-align: left;">FC OSS trigger 配置 (全自动摄入)</td>
+<td style="text-align: left;">上传视频即触发处理</td>
+</tr>
+<tr>
+<td style="text-align: left;">P1</td>
+<td style="text-align: left;">Web UI 上云 (OSS 静态托管)</td>
+<td style="text-align: left;">公网可访问搜索界面</td>
+</tr>
+<tr>
+<td style="text-align: left;">P2</td>
+<td style="text-align: left;">Qwen3-VL-Reranker 精排</td>
+<td style="text-align: left;">MRR 0.71→0.85+</td>
+</tr>
+<tr>
+<td style="text-align: left;">P2</td>
+<td style="text-align: left;">2fps 入库</td>
+<td style="text-align: left;">帧数翻倍, Recall +5pp</td>
+</tr>
+<tr>
+<td style="text-align: left;">P3</td>
+<td style="text-align: left;">Ego-centric 适配 (proprioception)</td>
+<td style="text-align: left;">支持 VLA 训练</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><a href="milestone6_egocentric_design.html">← 返回技术设计文档</a> | <a href="embodied_ai_training.html">← 返回训练白皮书</a></p>
+</body>
+</html>

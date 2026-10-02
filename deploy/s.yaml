@@ -30,15 +30,19 @@ resources:
       timeout: 60
       instanceConcurrency: 10
       customContainerConfig:
-        image: ${env(ACR_REGISTRY)}/rag-query:latest
+        image: ${env(ACR_REGISTRY)}/rag-query:v2
         port: 9000
       environmentVariables:
         DASHSCOPE_API_KEY: ${vars.dashscope_key}
         DASHSCOPE_BASE_URL: https://dashscope-intl.aliyuncs.com/api/v1
         DASHVECTOR_API_KEY: ${vars.dashvector_key}
         DASHVECTOR_ENDPOINT: ${vars.dashvector_endpoint}
-        DV_COLLECTION_NAME: scene_frames
+        DV_COLLECTION_NAME: scene_frames_2fps
         EMBEDDING_MODEL: tongyi-embedding-vision-plus
+        OSS_ACCESS_KEY_ID: ${env(OSS_ACCESS_KEY_ID)}
+        OSS_ACCESS_KEY_SECRET: ${env(OSS_ACCESS_KEY_SECRET)}
+        OSS_ENDPOINT: ${env(OSS_ENDPOINT)}
+        OSS_BUCKET_NAME: ${env(OSS_BUCKET_NAME)}
       triggers:
         - triggerName: http
           triggerType: http
@@ -66,7 +70,7 @@ resources:
         DASHSCOPE_BASE_URL: https://dashscope-intl.aliyuncs.com/api/v1
         DASHVECTOR_API_KEY: ${vars.dashvector_key}
         DASHVECTOR_ENDPOINT: ${vars.dashvector_endpoint}
-        DV_COLLECTION_NAME: scene_frames
+        DV_COLLECTION_NAME: scene_frames_2fps
         EMBEDDING_MODEL: tongyi-embedding-vision-plus
         VL_MODEL: qwen-vl-max
         OSS_ENDPOINT: ${env(OSS_ENDPOINT)}

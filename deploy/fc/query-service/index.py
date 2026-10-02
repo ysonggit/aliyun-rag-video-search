@@ -1,17 +1,18 @@
 """
 FC Query Service — HTTP server for Alibaba Cloud FC custom-container.
 
-Listens on port 9000 (FC default). Handles GET /search requests.
+Returns signed OSS URLs so browser can load private bucket images.
 """
 
 import json
 import os
 import sys
+from urllib.parse import urlparse
 from flask import Flask, request, jsonify
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Set DashScope to Singapore/intl endpoint before any DashScope calls
+# Set DashScope to Singapore/intl endpoint
 import dashscope
 dashscope.base_http_api_url = os.environ.get(
     "DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/api/v1"
@@ -20,8 +21,12 @@ dashscope.api_key = os.environ.get("DASHSCOPE_API_KEY", "")
 
 from pipeline.retriever import Retriever
 
+# OSS for signed URLs
+import oss2
+
 app = Flask(__name__)
 _retriever = None
+_oss_bucket = None
 
 
 def get_retriever():
@@ -36,21 +41,45 @@ def get_retriever():
     return _retriever
 
 
+def get_oss_bucket():
+    global _oss_bucket
+    if _oss_bucket is None:
+        ak = os.environ.get("OSS_ACCESS_KEY_ID", "")
+        sk = os.environ.get("OSS_ACCESS_KEY_SECRET", "")
+        endpoint = os.environ.get("OSS_ENDPOINT", "oss-ap-southeast-1.aliyuncs.com")
+        bucket_name = os.environ.get("OSS_BUCKET_NAME", "rag-videos-krones")
+        if ak and sk:
+            auth = oss2.Auth(ak, sk)
+            _oss_bucket = oss2.Bucket(auth, f"https://{endpoint}", bucket_name)
+    return _oss_bucket
+
+
+def sign_oss_url(public_url: str, expires: int = 3600) -> str:
+    """Convert a public OSS URL to a signed URL for private bucket access."""
+    bucket = get_oss_bucket()
+    if not bucket or "aliyuncs.com" not in public_url:
+        return public_url
+
+    # Extract key from URL: https://bucket.endpoint/key/path.jpg
+    parsed = urlparse(public_url)
+    key = parsed.path.lstrip("/")
+
+    # Generate signed URL (slash_safe=True is critical for keys with /)
+    return bucket.sign_url("GET", key, expires, slash_safe=True)
+
+
 @app.route("/", methods=["GET"])
 def health():
-    """Health check endpoint for FC."""
     return jsonify({"status": "ok"}), 200
 
 
 @app.route("/search", methods=["GET"])
 def search():
-    """Search endpoint: GET /search?q=take+cup&top_k=10&video_id=P01_03"""
     query = request.args.get("q", "").strip()
     if not query:
         return jsonify({"error": "Missing 'q' parameter"}), 400
 
     top_k = min(max(int(request.args.get("top_k", 10)), 1), 50)
-
     video_id = request.args.get("video_id")
     lighting = request.args.get("lighting")
     objects_str = request.args.get("objects", "")
@@ -71,7 +100,7 @@ def search():
                     "score": round(r.score, 4),
                     "video_id": r.video_id,
                     "timestamp": r.timestamp,
-                    "frame_path": r.frame_path,
+                    "frame_path": sign_oss_url(r.frame_path),
                     "objects": r.objects,
                     "actions": r.actions,
                     "lighting": r.lighting,

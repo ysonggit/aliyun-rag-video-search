@@ -1,0 +1,33 @@
+# Web UI (Streamlit) Docker Image
+# Runs Streamlit inside an FC custom-container, listening on $CAPort (default 9000).
+# Env vars (DASHSCOPE_API_KEY, DASHVECTOR_API_KEY, DASHVECTOR_ENDPOINT, WEBUI_PASSWORD)
+# are injected at deploy time via s.yaml — never baked into the image.
+
+FROM python:3.11-slim
+
+WORKDIR /code
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY deploy/requirements.webui.txt ./requirements.webui.txt
+COPY deploy/requirements.fc.txt ./requirements.fc.txt
+RUN pip install --no-cache-dir -r requirements.webui.txt
+
+# App + shared pipeline modules (same imports as the local Streamlit app)
+COPY pipeline/ pipeline/
+COPY config.py schema.py app.py ./
+
+# Streamlit hardening: headless, no file watcher, no usage telemetry, CORS+XSRF on
+ENV PYTHONUNBUFFERED=1 \
+    STREAMLIT_SERVER_HEADLESS=true \
+    STREAMLIT_SERVER_FILE_WATCHER_TYPE=none \
+    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
+    STREAMLIT_SERVER_ENABLE_CORS=true \
+    STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=true \
+    STREAMLIT_SERVER_MAX_UPLOAD_SIZE=1
+
+EXPOSE 9000
+# Shell form so we can read $CAPort at runtime (FC injects it)
+CMD sh -c "streamlit run app.py --server.port=${CAPort:-9000} --server.address=0.0.0.0 --browser.gatherUsageStats=false"
